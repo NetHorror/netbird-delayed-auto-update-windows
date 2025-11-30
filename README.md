@@ -123,6 +123,17 @@ Once per day (with the optional random delay), the scheduled task runs
 
 This way, short-lived or “bad” versions that are quickly replaced in Chocolatey are **never** deployed to your clients.
 
+### Task Scheduler status
+
+When the scheduled task runs, Windows Task Scheduler may show:
+
+- `LastRunResult = 0x41301` (or `267009` in PowerShell) – *"The task is currently running"*.  
+  This is expected: the script may sleep for up to `MaxRandomDelaySeconds` seconds as a random delay before checking updates.
+- `LastRunResult = 0x41303` (or `267011`) – the task has never finished yet (e.g. just created).
+
+This is **not** an error. As soon as the script finishes, `LastRunResult` becomes `0` and a new log file appears in
+`C:\ProgramData\NetBirdDelayedUpdate\`.
+
 ---
 
 ## Logs
