@@ -37,12 +37,13 @@ Logs are stored in the same directory.
 - Installed [Chocolatey](https://chocolatey.org)  
 - NetBird installed via Chocolatey:
 
+
 ```powershell
 choco install netbird -y
 ```
 ## Repository structure
 ```text
-netbird-delayed-auto-update-windows/
+netbird-delayed-auto-update-windowsdows/
 ├─ README.md
 ├─ NetBird-Delayed-Choco-Update.ps1
 ├─ install-netbird-delayed-update.ps1
@@ -53,8 +54,8 @@ netbird-delayed-auto-update-windows/
 Open **PowerShell as Administrator**:
 
 ```powershell
-git clone https://github.com/NetHorror/netbird-delayed-auto-update-windows.git
-cd netbird-delayed-auto-update-win
+git clone https://github.com/NetHorror/netbird-delayed-auto-update-windowsdows.git
+cd netbird-delayed-auto-update-windows
 
 # Default: DelayDays=3, MaxRandomDelaySeconds=3600, time 04:00, run as SYSTEM
 .\install-netbird-delayed-update.ps1
@@ -119,13 +120,13 @@ This way, short-lived or “bad” versions that are quickly replaced in Chocola
 
 Log files are stored in:
 
-```text
+```
 C:\ProgramData\NetBirdDelayedUpdate\
 ```
 
 File names look like:
 
-```text
+```
 netbird-delayed-update-YYYYMMDD-HHMMSS.log
 ```
 
@@ -142,14 +143,14 @@ You can review these logs to see:
 To remove the scheduled task (but keep state/logs):
 
 ```powershell
-cd netbird-delayed-auto-update-windows
+cd netbird-delayed-auto-update-windowsdows
 .\uninstall-netbird-delayed-update.ps1
 ```
 
 To remove both the task **and** the state/logs directory:
 
 ```powershell
-cd netbird-delayed-auto-update-win
+cd netbird-delayed-auto-update-windows
 .\uninstall-netbird-delayed-update.ps1 -RemoveState
 ```
 
