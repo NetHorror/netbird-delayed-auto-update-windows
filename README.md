@@ -1,6 +1,6 @@
 # NetBird Delayed Auto-Update for Windows (Chocolatey)
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform: Windows](https://img.shields.io/badge/platform-Windows-informational) ![Package manager: Chocolatey](https://img.shields.io/badge/package%20manager-Chocolatey-8A4513) ![PowerShell](https://img.shields.io/badge/PowerShell-5%2B-brightgreen)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform: Windows](https://img.shields.io/badge/platform-Windows-informational) ![PowerShell](https://img.shields.io/badge/PowerShell-5%2B-brightgreen) ![Package manager: Chocolatey](https://img.shields.io/badge/package%20manager-Chocolatey-8A4513)
 
 Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+).
 
