@@ -1,6 +1,7 @@
 # NetBird Delayed Auto-Update for Windows (Chocolatey)
 
-Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+)
+Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+).
+
 > Don’t upgrade NetBird clients immediately when a new version appears in Chocolatey.  
 > Instead, wait **N days**. If that version is quickly replaced (hotfix / bad release),  
 > clients will **never** upgrade to it.
@@ -43,7 +44,7 @@ choco install netbird -y
 ```
 ## Repository structure
 ```text
-netbird-delayed-auto-update-windowsdows/
+netbird-delayed-auto-update-windows/
 ├─ README.md
 ├─ NetBird-Delayed-Choco-Update.ps1
 ├─ install-netbird-delayed-update.ps1
@@ -54,7 +55,7 @@ netbird-delayed-auto-update-windowsdows/
 Open **PowerShell as Administrator**:
 
 ```powershell
-git clone https://github.com/NetHorror/netbird-delayed-auto-update-windowsdows.git
+git clone https://github.com/NetHorror/netbird-delayed-auto-update-windows.git
 cd netbird-delayed-auto-update-windows
 
 # Default: DelayDays=3, MaxRandomDelaySeconds=3600, time 04:00, run as SYSTEM
@@ -143,7 +144,7 @@ You can review these logs to see:
 To remove the scheduled task (but keep state/logs):
 
 ```powershell
-cd netbird-delayed-auto-update-windowsdows
+cd netbird-delayed-auto-update-windows
 .\uninstall-netbird-delayed-update.ps1
 ```
 
