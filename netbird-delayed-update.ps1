@@ -24,6 +24,11 @@
     When used with -Uninstall, also delete C:\ProgramData\NetBirdDelayedUpdate
     (state.json and log files).
 
+.PARAMETER StartWhenAvailable
+    When used with -Install, enables Task Scheduler option
+    "Run task as soon as possible after a scheduled start is missed".
+    Short alias: -r. Useful for laptops that are often powered off at the scheduled time.
+
 .PARAMETER DelayDays
     How many days a new candidate version must stay unchanged in the Chocolatey
     repository before it can be installed.
@@ -56,6 +61,12 @@
     .\netbird-delayed-update.ps1 -Install -DelayDays 5 -MaxRandomDelaySeconds 0
 
 .EXAMPLE
+    # Install task and run it as soon as possible after a missed schedule
+    .\netbird-delayed-update.ps1 -Install -StartWhenAvailable
+    # or shorter:
+    .\netbird-delayed-update.ps1 -i -r
+
+.EXAMPLE
     # Uninstall task but keep state/logs
     .\netbird-delayed-update.ps1 -Uninstall
 
@@ -78,6 +89,8 @@ param(
     [Alias("i")][switch]$Install,
     [Alias("u")][switch]$Uninstall,
     [switch]$RemoveState,
+
+    [Alias("r")][switch]$StartWhenAvailable,
 
     [int]$DelayDays = 3,
     [int]$MaxRandomDelaySeconds = 3600,
@@ -252,6 +265,15 @@ function Install-NetBirdTask {
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
     }
 
+    # Settings (StartWhenAvailable controlled by -StartWhenAvailable / -r)
+    if ($StartWhenAvailable) {
+        Write-Host 'The task will run as soon as possible after a missed start (StartWhenAvailable = true).'
+        $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
+    }
+    else {
+        $settings = New-ScheduledTaskSettingsSet
+    }
+
     # Remove existing task if present
     try {
         $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -264,7 +286,11 @@ function Install-NetBirdTask {
         Write-Warning "Failed to check/remove existing task: $($_.Exception.Message)"
     }
 
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal | Out-Null
+    Register-ScheduledTask -TaskName $TaskName `
+                           -Action $action `
+                           -Trigger $trigger `
+                           -Principal $principal `
+                           -Settings $settings | Out-Null
 
     Write-Host "Task '$TaskName' has been created successfully."
     Write-Host "Done."
