@@ -136,7 +136,7 @@ if (-not $remoteInfo) {
 }
 
 $candidateVersion = $remoteInfo.Version
-Write-Log "Repository candidate version for $PackageName: $candidateVersion"
+Write-Log "Repository candidate version for ${PackageName}: $candidateVersion"
 
 # 5. Load state
 $state  = Load-State
