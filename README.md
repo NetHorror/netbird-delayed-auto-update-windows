@@ -53,7 +53,7 @@ netbird-delayed-auto-update-windows/
 Open **PowerShell as Administrator**:
 
 ```powershell
-git clone https://github.com/<you>/netbird-delayed-auto-update-windows.git
+git clone https://github.com/NetHorror/netbird-delayed-auto-update-windows.git
 cd netbird-delayed-auto-update-win
 
 # Default: DelayDays=3, MaxRandomDelaySeconds=3600, time 04:00, run as SYSTEM
