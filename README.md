@@ -1,6 +1,6 @@
 # NetBird Delayed Auto-Update for Windows (Chocolatey)
 
-Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+)
+Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+).
 
 > Don’t upgrade NetBird clients immediately when a new version appears in Chocolatey.  
 > Instead, wait **N days**. If that version is quickly replaced (hotfix / bad release),  
@@ -17,10 +17,13 @@ Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / W
 
 State is stored in:
 
-```text
+~~~text
 C:\ProgramData\NetBirdDelayedUpdate\state.json
-```
+~~~
+
 Logs are stored in the same directory.
+
+---
 
 ## Features
 
@@ -30,6 +33,9 @@ Logs are stored in the same directory.
 - 🧱 **Local state tracking** – remembers last seen repo version and when it was first observed.
 - 🛑 **No silent install** – if NetBird is not installed locally, the script exits without doing anything.
 - 📜 **Detailed logs** – logs each decision (first seen, still aging, upgraded, already up-to-date, etc.).
+- 🧩 **Single script** – one PowerShell file handles install, uninstall and the actual update logic.
+
+---
 
 ## Requirements
 
@@ -39,36 +45,44 @@ Logs are stored in the same directory.
 - [Git for Windows](https://git-scm.com/download/win) (for installation via `git clone`)  
 - NetBird installed via Chocolatey:
 
-
-```powershell
+~~~powershell
 choco install netbird -y
-```
+~~~
+
+---
+
 ## Repository structure
-```text
+
+~~~text
 netbird-delayed-auto-update-windows/
 ├─ README.md
-├─ NetBird-Delayed-Choco-Update.ps1
-├─ install-netbird-delayed-update.ps1
-└─ uninstall-netbird-delayed-update.ps1
-```
+├─ LICENSE
+└─ netbird-delayed-update.ps1
+~~~
+
+---
+
 ## Quick start
 
 Open **PowerShell as Administrator**:
 
-```powershell
+~~~powershell
 git clone https://github.com/NetHorror/netbird-delayed-auto-update-windows.git
 cd netbird-delayed-auto-update-windows
 
 # Default: DelayDays=3, MaxRandomDelaySeconds=3600, time 04:00, run as SYSTEM
-.\install-netbird-delayed-update.ps1
-```
+.\netbird-delayed-update.ps1 -Install
+# or shorter:
+# .\netbird-delayed-update.ps1 -i
+~~~
 
-If you don't have Git installed, you can download the repository as a ZIP from GitHub ("Code" → "Download ZIP"), extract it and run:
+If you don't have Git installed, you can download the repository as a ZIP from GitHub ("Code" → "Download ZIP"),
+extract it and run:
 
-```powershell
+~~~powershell
 cd C:\path\to\netbird-delayed-auto-update-windows
-.\install-netbird-delayed-update.ps1
-```
+.\netbird-delayed-update.ps1 -Install
+~~~
 
 After successful installation, you should see a scheduled task named:
 
@@ -80,59 +94,109 @@ in the Windows Task Scheduler.
 
 ## Installation options
 
-The installer script accepts several parameters:
+The script has three modes:
 
-```powershell
-# Wait 5 days, random delay up to 10 minutes, run at 03:30
-.\install-netbird-delayed-update.ps1 -DelayDays 5 -MaxRandomDelaySeconds 600 -DailyTime "03:30"
+- **Install mode** – `-Install` / `-i`  
+  Creates or updates the scheduled task.
+- **Uninstall mode** – `-Uninstall` / `-u`  
+  Removes the scheduled task (optionally state/logs).
+- **Run mode** – no `-Install`/`-Uninstall`  
+  Performs a single delayed-update check. This is what Task Scheduler uses.
+
+### Install parameters
+
+~~~powershell
+# Wait 5 days, no random delay, run at 03:30
+.\netbird-delayed-update.ps1 -Install -DelayDays 5 -MaxRandomDelaySeconds 0 -DailyTime "03:30"
 
 # Run the task as the current user (instead of SYSTEM)
-.\install-netbird-delayed-update.ps1 -RunAsCurrentUser
-```
+.\netbird-delayed-update.ps1 -Install -RunAsCurrentUser
+~~~
 
 **Parameters (summary):**
 
-- `-DelayDays` – how many days a new Chocolatey NetBird version must stay unchanged before upgrade.
-- `-MaxRandomDelaySeconds` – max random delay added after the scheduled time.
-- `-DailyTime` – time of day in `HH:mm` (24h format) when the task should start.
+- `-DelayDays` – how many days a new Chocolatey NetBird version must stay unchanged before upgrade (default: `3`).
+- `-MaxRandomDelaySeconds` – max random delay added after the scheduled start time (default: `3600` seconds).
+- `-DailyTime` – time of day in `HH:mm` (24h format) when the task should start (default: `04:00`).
+- `-TaskName` – scheduled task name (default: `NetBird Delayed Choco Update`).
 - `-RunAsCurrentUser` – run scheduled task under the current user instead of `SYSTEM`.
 
 ---
 
 ## How it works
 
-Once per day (with the optional random delay), the scheduled task runs  
-`NetBird-Delayed-Choco-Update.ps1`, which does the following:
+The single script `netbird-delayed-update.ps1` can either install the scheduled task or run the delayed-update logic.
 
-1. Reads the **locally installed** NetBird version (Chocolatey package).
-2. Reads the **repository (latest)** NetBird version from Chocolatey.
-3. If NetBird is not installed, the script exits (no auto-install).
-4. If a **new repo version** appears:
-   - On the first sighting, it records the version and current timestamp into `state.json` and exits.
-   - If the version changes again later, the aging timer is reset.
-5. If the **same repo version** has been present for at least `DelayDays` and the **local version is older**:
-   - Tries to **stop the NetBird Windows service** (if present).
-   - Runs:
+When the scheduled task triggers (daily at `DailyTime`), it runs:
 
-     ```powershell
+~~~text
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "netbird-delayed-update.ps1" -DelayDays X -MaxRandomDelaySeconds Y
+~~~
+
+The script then:
+
+1. Optionally sleeps for a **random delay** between `0` and `MaxRandomDelaySeconds` seconds.
+2. Checks that Chocolatey (`choco`) is available.
+3. Reads the **locally installed** NetBird version (Chocolatey package).
+4. Reads the **repository (latest)** NetBird version from Chocolatey.
+5. If NetBird is not installed, the script exits (no auto-install).
+6. Maintains a `state.json` file with:
+   - the current candidate version from Chocolatey,
+   - when it was first seen (`FirstSeenUtc`),
+   - when it was last checked.
+7. If a **new candidate version** appears in the repo:
+   - the aging timer is reset (new `FirstSeenUtc`).
+8. If the candidate version has “aged” for at least `DelayDays` and the local version is older:
+   - tries to stop the NetBird Windows service (if present),
+   - runs:
+
+     ~~~powershell
      choco upgrade netbird -y --no-progress
-     ```
+     ~~~
 
-   - Starts the NetBird service again.
-   - Writes detailed log entries to the log file in `C:\ProgramData\NetBirdDelayedUpdate\`.
+   - starts the NetBird service again,
+   - writes detailed log entries.
 
-This way, short-lived or “bad” versions that are quickly replaced in Chocolatey are **never** deployed to your clients.
+Short-lived or “bad” versions that are quickly replaced in Chocolatey are **never** deployed to your clients,  
+because they fail to reach the required `DelayDays` age.
 
-### Task Scheduler status
+---
 
-When the scheduled task runs, Windows Task Scheduler may show:
+## Task Scheduler status
 
-- `LastRunResult = 0x41301` (or `267009` in PowerShell) – *"The task is currently running"*.  
-  This is expected: the script may sleep for up to `MaxRandomDelaySeconds` seconds as a random delay before checking updates.
-- `LastRunResult = 0x41303` (or `267011`) – the task has never finished yet (e.g. just created).
+When checking the task in **Task Scheduler** or via PowerShell, you may see:
 
-This is **not** an error. As soon as the script finishes, `LastRunResult` becomes `0` and a new log file appears in
-`C:\ProgramData\NetBirdDelayedUpdate\`.
+- `LastRunResult = 0` – last run finished successfully.
+- `LastRunResult = 0x41301` (or `267009` in PowerShell) –  
+  **"The task is currently running"**.  
+  For this script that usually means it is sleeping inside the random delay
+  (`MaxRandomDelaySeconds`) before performing the actual checks.
+- `LastRunResult = 0x41303` (or `267011`) – the task has been triggered but has not yet completed its first run.
+
+This is expected behavior when a random delay is configured.  
+As soon as the script finishes, `LastRunResult` becomes `0` and a new log file appears in:
+
+~~~text
+C:\ProgramData\NetBirdDelayedUpdate\
+~~~
+
+---
+
+## Manual one-off run (for testing)
+
+You can run the delayed-update logic manually without touching the scheduled task:
+
+~~~powershell
+# Run immediately, no random delay, no "aging" period (for testing)
+.\netbird-delayed-update.ps1 -DelayDays 0 -MaxRandomDelaySeconds 0
+~~~
+
+This will:
+
+- perform all checks,
+- log the decisions,
+- update `state.json`,
+- and optionally run `choco upgrade` if needed.
 
 ---
 
@@ -140,21 +204,22 @@ This is **not** an error. As soon as the script finishes, `LastRunResult` become
 
 Log files are stored in:
 
-```
+~~~text
 C:\ProgramData\NetBirdDelayedUpdate\
-```
+~~~
 
 File names look like:
 
-```
+~~~text
 netbird-delayed-update-YYYYMMDD-HHMMSS.log
-```
+~~~
 
 You can review these logs to see:
 
 - when a candidate version was first observed,
 - how long it aged,
-- when an upgrade actually happened.
+- when an upgrade actually happened,
+- any warnings or errors (e.g. missing `choco` or NetBird package).
 
 ---
 
@@ -162,23 +227,22 @@ You can review these logs to see:
 
 To remove the scheduled task (but keep state/logs):
 
-```powershell
-cd netbird-delayed-auto-update-windows
-.\uninstall-netbird-delayed-update.ps1
-```
+~~~powershell
+.\netbird-delayed-update.ps1 -Uninstall
+# or shorter:
+# .\netbird-delayed-update.ps1 -u
+~~~
 
 To remove both the task **and** the state/logs directory:
 
-```powershell
-cd netbird-delayed-auto-update-windows
-.\uninstall-netbird-delayed-update.ps1 -RemoveState
-```
+~~~powershell
+.\netbird-delayed-update.ps1 -Uninstall -RemoveState
+~~~
 
 NetBird itself is **not** removed – only the delayed update mechanism.
 
 ---
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Platform: Windows](https://img.shields.io/badge/platform-Windows-informational)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)  
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-informational)  
 ![PowerShell](https://img.shields.io/badge/PowerShell-5%2B-lightgrey)
-
