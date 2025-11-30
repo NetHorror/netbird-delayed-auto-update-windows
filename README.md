@@ -36,6 +36,7 @@ Logs are stored in the same directory.
 - Windows Server 2019+ or Windows 10+  
 - PowerShell 5+  
 - Installed [Chocolatey](https://chocolatey.org)  
+- [Git for Windows](https://git-scm.com/download/win) (for installation via `git clone`)  
 - NetBird installed via Chocolatey:
 
 
@@ -59,6 +60,13 @@ git clone https://github.com/NetHorror/netbird-delayed-auto-update-windows.git
 cd netbird-delayed-auto-update-windows
 
 # Default: DelayDays=3, MaxRandomDelaySeconds=3600, time 04:00, run as SYSTEM
+.\install-netbird-delayed-update.ps1
+```
+
+If you don't have Git installed, you can download the repository as a ZIP from GitHub ("Code" → "Download ZIP"), extract it and run:
+
+```powershell
+cd C:\path\to\netbird-delayed-auto-update-windows
 .\install-netbird-delayed-update.ps1
 ```
 
