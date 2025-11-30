@@ -1,6 +1,6 @@
 # NetBird Delayed Auto-Update for Windows (Chocolatey)
 
-Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+).
+Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+)
 
 > Don’t upgrade NetBird clients immediately when a new version appears in Chocolatey.  
 > Instead, wait **N days**. If that version is quickly replaced (hotfix / bad release),  
