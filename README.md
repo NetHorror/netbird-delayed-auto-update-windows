@@ -243,6 +243,7 @@ NetBird itself is **not** removed – only the delayed update mechanism.
 
 ---
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)  
-![Platform: Windows](https://img.shields.io/badge/platform-Windows-informational)  
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-informational)
 ![PowerShell](https://img.shields.io/badge/PowerShell-5%2B-lightgrey)
+
