@@ -1,9 +1,6 @@
 # NetBird Delayed Auto-Update for Windows (Chocolatey) 🪟
 
 Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+),
-similar in spirit to the Linux version:  
-[NetHorror/netbird-delayed-auto-update-linux](https://github.com/NetHorror/netbird-delayed-auto-update-linux).
-
 > Don’t upgrade NetBird clients immediately when a new version appears in Chocolatey.  
 > Instead, wait **N days**. If that version is quickly replaced (hotfix / bad release),  
 > clients will **never** upgrade to it.
@@ -24,8 +21,6 @@ C:\ProgramData\NetBirdDelayedUpdate\state.json
 ```
 Logs are stored in the same directory.
 
----
-
 ## Features
 
 - ⏳ **Version aging** – only upgrades after a version has been stable in Chocolatey for `DelayDays`.
@@ -34,8 +29,6 @@ Logs are stored in the same directory.
 - 🧱 **Local state tracking** – remembers last seen repo version and when it was first observed.
 - 🛑 **No silent install** – if NetBird is not installed locally, the script exits without doing anything.
 - 📜 **Detailed logs** – logs each decision (first seen, still aging, upgraded, already up-to-date, etc.).
-
----
 
 ## Requirements
 
