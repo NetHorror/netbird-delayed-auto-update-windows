@@ -1,6 +1,6 @@
 # NetBird Delayed Auto-Update for Windows (Chocolatey)
 
-Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+),
+Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+)
 > Don’t upgrade NetBird clients immediately when a new version appears in Chocolatey.  
 > Instead, wait **N days**. If that version is quickly replaced (hotfix / bad release),  
 > clients will **never** upgrade to it.
@@ -34,7 +34,7 @@ Logs are stored in the same directory.
 
 - Windows Server 2019+ or Windows 10+  
 - PowerShell 5+  
-- Installed [Chocolatey] (https://chocolatey.org)  
+- Installed [Chocolatey](https://chocolatey.org)  
 - NetBird installed via Chocolatey:
 
 ```powershell
@@ -42,7 +42,7 @@ choco install netbird -y
 ```
 ## Repository structure
 ```text
-netbird-delayed-auto-update-win/
+netbird-delayed-auto-update-windows/
 ├─ README.md
 ├─ NetBird-Delayed-Choco-Update.ps1
 ├─ install-netbird-delayed-update.ps1
@@ -53,14 +53,14 @@ netbird-delayed-auto-update-win/
 Open **PowerShell as Administrator**:
 
 ```powershell
-git clone https://github.com/<you>/netbird-delayed-auto-update-win.git
+git clone https://github.com/<you>/netbird-delayed-auto-update-windows.git
 cd netbird-delayed-auto-update-win
 
 # Default: DelayDays=3, MaxRandomDelaySeconds=3600, time 04:00, run as SYSTEM
 .\install-netbird-delayed-update.ps1
 ```
 
-After successful installation you should see a scheduled task named:
+After successful installation, you should see a scheduled task named:
 
 > **NetBird Delayed Choco Update**
 
@@ -142,11 +142,11 @@ You can review these logs to see:
 To remove the scheduled task (but keep state/logs):
 
 ```powershell
-cd netbird-delayed-auto-update-win
+cd netbird-delayed-auto-update-windows
 .\uninstall-netbird-delayed-update.ps1
 ```
 
-To remove both the task **and** the state/log directory:
+To remove both the task **and** the state/logs directory:
 
 ```powershell
 cd netbird-delayed-auto-update-win
@@ -157,6 +157,7 @@ NetBird itself is **not** removed – only the delayed update mechanism.
 
 ---
 
-## License
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-informational)
+![PowerShell](https://img.shields.io/badge/PowerShell-5%2B-lightgrey)
 
-MIT (same as the Linux variant).
