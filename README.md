@@ -75,13 +75,14 @@ netbird-delayed-auto-update-windows/
 Open **PowerShell as Administrator**:
 
 ~~~powershell
+# Clone and install scheduled task with defaults:
+#   DelayDays=3, MaxRandomDelaySeconds=3600, DailyTime=04:00,
+#   run as SYSTEM with highest privileges and bypass script execution policy
+~~~
+~~~powershell
 git clone https://github.com/NetHorror/netbird-delayed-auto-update-windows.git
 cd netbird-delayed-auto-update-windows
-
-# Install scheduled task with defaults:
-#   DelayDays=3, MaxRandomDelaySeconds=3600, DailyTime=04:00,
-#   run as SYSTEM with highest privileges.
-.\netbird-delayed-update.ps1 -i
+powershell -noexit -ExecutionPolicy Bypass -File netbird-delayed-update.ps1 -i
 ~~~
 
 If you don't have Git installed, you can download the repository as a ZIP from GitHub  
