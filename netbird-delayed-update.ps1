@@ -139,7 +139,7 @@ function Load-State {
         return $json | ConvertFrom-Json
     }
     catch {
-        Write-Log "WARNING: Failed to read/parse state file '$StateFile': $($_.Exception.Message)"
+        Write-Log ("WARNING: Failed to read/parse state file '{0}': {1}" -f $StateFile, $_.Exception.Message)
         return $null
     }
 }
@@ -164,7 +164,7 @@ function Save-State {
         $json | Set-Content -Path $StateFile -Encoding UTF8
     }
     catch {
-        Write-Log "WARNING: Failed to write state file '$StateFile': $($_.Exception.Message)"
+        Write-Log ("WARNING: Failed to write state file '{0}': {1}" -f $StateFile, $_.Exception.Message)
     }
 }
 
@@ -195,7 +195,7 @@ function Invoke-SelfUpdateByRelease {
 
         # Tag is plain version number like "0.2.0" (no leading 'v')
         if ($rel.tag_name -notmatch '^([0-9]+\.[0-9]+\.[0-9]+)$') {
-            Write-Log "Self-update: cannot parse release tag '$($rel.tag_name)' as X.Y.Z; skipping."
+            Write-Log ("Self-update: cannot parse release tag '{0}' as X.Y.Z; skipping." -f $rel.tag_name)
             return
         }
 
@@ -223,14 +223,14 @@ function Invoke-SelfUpdateByRelease {
             }
 
             if ($repoDir) {
-                Write-Log "Self-update: running 'git pull --ff-only' in $repoDir"
+                Write-Log ("Self-update: running 'git pull --ff-only' in {0}" -f $repoDir)
                 & git -C $repoDir pull --ff-only
                 if ($LASTEXITCODE -eq 0) {
                     Write-Log "Self-update: git pull completed. New script will be used on next run."
                     $didGitUpdate = $true
                 }
                 else {
-                    Write-Log "Self-update: git pull failed with exit code $LASTEXITCODE."
+                    Write-Log ("Self-update: git pull failed with exit code {0}." -f $LASTEXITCODE)
                 }
             }
             else {
@@ -247,7 +247,7 @@ function Invoke-SelfUpdateByRelease {
 
         # 3) HTTP fallback: download script from raw GitHub URL for this tag
         $rawUrl = "https://raw.githubusercontent.com/$ScriptRepo/$($rel.tag_name)/$ScriptRelativePath"
-        Write-Log "Self-update: downloading script from $rawUrl"
+        Write-Log ("Self-update: downloading script from {0}" -f $rawUrl)
 
         $tmp = [System.IO.Path]::GetTempFileName()
         Invoke-WebRequest -Uri $rawUrl -OutFile $tmp -UseBasicParsing
@@ -331,7 +331,7 @@ function Install-NetBirdTask {
         }
     }
     catch {
-        Write-Warning "Failed to check/remove existing task '$TaskName': $($_.Exception.Message)"
+        Write-Warning ("Failed to check/remove existing task '{0}': {1}" -f $TaskName, $_.Exception.Message)
     }
 
     # Register new task
@@ -340,7 +340,7 @@ function Install-NetBirdTask {
         Write-Host "Scheduled task '$TaskName' installed/updated successfully."
     }
     catch {
-        Write-Error "Failed to register scheduled task '$TaskName': $($_.Exception.Message)"
+        Write-Error ("Failed to register scheduled task '{0}': {1}" -f $TaskName, $_.Exception.Message)
     }
 }
 
@@ -361,7 +361,7 @@ function Uninstall-NetBirdTask {
         }
     }
     catch {
-        Write-Warning "Failed to remove task '$TaskName': $($_.Exception.Message)"
+        Write-Warning ("Failed to remove task '{0}': {1}" -f $TaskName, $_.Exception.Message)
     }
 
     if ($RemoveState) {
@@ -377,7 +377,7 @@ function Uninstall-NetBirdTask {
             }
         }
         catch {
-            Write-Warning "Failed to remove '$StateDir': $($_.Exception.Message)"
+            Write-Warning ("Failed to remove '{0}': {1}" -f $StateDir, $_.Exception.Message)
         }
     }
 
@@ -409,7 +409,7 @@ function Invoke-NetBirdDelayedUpdate {
         $installedOutput = choco list --localonly $PackageName 2>$null
     }
     catch {
-        Write-Log "ERROR: Failed to execute 'choco list --localonly $PackageName': $($_.Exception.Message)"
+        Write-Log ("ERROR: Failed to execute 'choco list --localonly {0}': {1}" -f $PackageName, $_.Exception.Message)
         return 1
     }
 
@@ -423,7 +423,7 @@ function Invoke-NetBirdDelayedUpdate {
     }
 
     if (-not $installedVersionString) {
-        Write-Log "Package '$PackageName' is not installed locally. Nothing to update. Exiting."
+        Write-Log ("Package '{0}' is not installed locally. Nothing to update. Exiting." -f $PackageName)
         return 0
     }
 
@@ -434,7 +434,7 @@ function Invoke-NetBirdDelayedUpdate {
         $infoOutput = choco info $PackageName 2>$null
     }
     catch {
-        Write-Log "ERROR: Failed to execute 'choco info $PackageName': $($_.Exception.Message)"
+        Write-Log ("ERROR: Failed to execute 'choco info {0}': {1}" -f $PackageName, $_.Exception.Message)
         return 1
     }
 
@@ -460,7 +460,7 @@ function Invoke-NetBirdDelayedUpdate {
         $candidateVersion = [version]$candidateVersionString
     }
     catch {
-        Write-Log "ERROR: Failed to parse versions. Installed='$installedVersionString', Repo='$candidateVersionString'."
+        Write-Log ("ERROR: Failed to parse versions. Installed='{0}', Repo='{1}'." -f $installedVersionString, $candidateVersionString)
         return 1
     }
 
@@ -516,7 +516,7 @@ function Invoke-NetBirdDelayedUpdate {
         }
     }
     catch {
-        Write-Log "WARNING: Failed to stop NetBird service: $($_.Exception.Message)"
+        Write-Log ("WARNING: Failed to stop NetBird service: {0}" -f $_.Exception.Message)
     }
 
     # Run choco upgrade
@@ -525,7 +525,7 @@ function Invoke-NetBirdDelayedUpdate {
     $chocoExit = $LASTEXITCODE
 
     if ($chocoExit -ne 0) {
-        Write-Log "ERROR: 'choco upgrade' returned exit code $chocoExit."
+        Write-Log ("ERROR: 'choco upgrade' returned exit code {0}." -f $chocoExit)
         $exitCode = $chocoExit
     }
     else {
@@ -540,7 +540,7 @@ function Invoke-NetBirdDelayedUpdate {
             }
         }
         catch {
-            Write-Log "WARNING: Failed to start NetBird service: $($_.Exception.Message)"
+            Write-Log ("WARNING: Failed to start NetBird service: {0}" -f $_.Exception.Message)
         }
     }
 
@@ -566,7 +566,7 @@ function Invoke-NetBirdGuiUpdate {
             $guiState = Get-Content $guiStateFile -Raw | ConvertFrom-Json
         }
         catch {
-            Write-Log "Failed to parse gui-state.json, it will be recreated. $($_.Exception.Message)"
+            Write-Log ("Failed to parse gui-state.json, it will be recreated. {0}" -f $_.Exception.Message)
             $guiState = $null
         }
     }
@@ -579,7 +579,7 @@ function Invoke-NetBirdGuiUpdate {
         $latestRelease = Invoke-RestMethod -Uri $releaseUrl -UseBasicParsing
     }
     catch {
-        Write-Log "GitHub API call failed (GUI update skipped): $($_.Exception.Message)"
+        Write-Log ("GitHub API call failed (GUI update skipped): {0}" -f $_.Exception.Message)
         return
     }
 
@@ -589,7 +589,7 @@ function Invoke-NetBirdGuiUpdate {
     }
 
     if (-not $releaseVersion) {
-        Write-Log "Could not parse GUI release version from tag '$($latestRelease.tag_name)'. Skipping GUI update."
+        Write-Log ("Could not parse GUI release version from tag '{0}'. Skipping GUI update." -f $latestRelease.tag_name)
         return
     }
 
@@ -612,7 +612,7 @@ function Invoke-NetBirdGuiUpdate {
         Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
     }
     catch {
-        Write-Log "Failed to download GUI installer: $($_.Exception.Message)"
+        Write-Log ("Failed to download GUI installer: {0}" -f $_.Exception.Message)
         return
     }
 
@@ -623,7 +623,7 @@ function Invoke-NetBirdGuiUpdate {
         Write-Log "GUI installer finished successfully."
     }
     catch {
-        Write-Log "GUI installer process failed: $($_.Exception.Message)"
+        Write-Log ("GUI installer process failed: {0}" -f $_.Exception.Message)
         return
     }
     finally {
@@ -631,7 +631,7 @@ function Invoke-NetBirdGuiUpdate {
             Remove-Item $installerPath -ErrorAction SilentlyContinue
         }
         catch {
-            Write-Log "Failed to remove temporary GUI installer file: $($_.Exception.Message)"
+            Write-Log ("Failed to remove temporary GUI installer file: {0}" -f $_.Exception.Message)
         }
     }
 
@@ -646,7 +646,7 @@ function Invoke-NetBirdGuiUpdate {
         Write-Log "GUI state updated: version $releaseVersion."
     }
     catch {
-        Write-Log "Failed to write gui-state.json: $($_.Exception.Message)"
+        Write-Log ("Failed to write gui-state.json: {0}" -f $_.Exception.Message)
     }
 }
 
