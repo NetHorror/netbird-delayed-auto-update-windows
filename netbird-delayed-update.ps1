@@ -26,43 +26,6 @@
       -Run      (default) : perform delayed-update check and optional upgrade (daemon + GUI).
       -Install           : create / update the scheduled task that runs this script daily.
       -Uninstall         : remove the scheduled task (and optionally state/logs).
-
-.PARAMETER Install
-    Install or update the scheduled task that runs this script daily in Run mode.
-
-.PARAMETER Uninstall
-    Remove the scheduled task and optionally delete state/logs.
-
-.PARAMETER RemoveState
-    When used with -Uninstall, also delete C:\ProgramData\NetBirdDelayedUpdate (state & logs).
-
-.PARAMETER StartWhenAvailable
-    If the task is missed (e.g. computer was turned off), run the task as soon as possible
-    instead of waiting until the next scheduled time. Equivalent to Task Scheduler's
-    "Run task as soon as possible after a scheduled start is missed".
-
-.PARAMETER DelayDays
-    Minimum number of days that a NetBird version must be present in the Chocolatey repo
-    before it can be installed. Defaults to 10 days.
-    If 0, versions are installed as soon as they appear in the repo (no delay).
-
-.PARAMETER MaxRandomDelaySeconds
-    Maximum random delay (in seconds) added before each Run-mode check.
-    This helps to avoid all machines hitting the repo at once. Default: 3600 (1 hour).
-    If set to 0, no random delay is added.
-
-.PARAMETER DailyTime
-    Time of day (HH:mm) when the scheduled task should run. Default: "04:00".
-
-.PARAMETER TaskName
-    Human-readable name of the scheduled task. Default: "NetBird Delayed Choco Update".
-
-.PARAMETER RunAsCurrentUser
-    If set together with -Install, the task is created to run as the current user
-    with highest privileges. If not set, the task runs as SYSTEM.
-
-.PARAMETER PackageName
-    Chocolatey package name (defaults to "netbird").
 #>
 
 [CmdletBinding(DefaultParameterSetName = "Run")]
@@ -90,19 +53,14 @@ $LogDir    = $StateDir
 
 # ------------- Script self-update settings -------------
 
-# Local script version. Bump this on every script release.
-# Example: 0.2.0, 0.2.1, 0.3.0 (no leading 'v').
 $ScriptVersion = [version]"0.2.0"
-
-# GitHub repository that hosts this script (owner/repo).
 $ScriptRepo = "NetHorror/netbird-delayed-auto-update-windows"
-
-# Path to this script inside the repo (used for HTTP fallback).
 $ScriptRelativePath = "netbird-delayed-update.ps1"
 
-# will be initialised later when we know we are in Run mode
-$script:LogFile = $null
+# globals for this run
+$script:LogFile          = $null
 $script:NetBirdInstalled = $false
+$script:NetBirdUpgraded  = $false
 
 function Ensure-StateDir {
     if (-not (Test-Path $StateDir)) {
@@ -180,7 +138,6 @@ function Invoke-SelfUpdateByRelease {
     }
 
     try {
-        # Determine local script path
         $localPath = $PSCommandPath
         if (-not $localPath) {
             $localPath = $MyInvocation.PSCommandPath
@@ -190,13 +147,11 @@ function Invoke-SelfUpdateByRelease {
             return
         }
 
-        # 1) Get latest release from GitHub
         $releaseUrl = "https://api.github.com/repos/$ScriptRepo/releases/latest"
         Write-Log "Self-update: checking latest script release at $releaseUrl"
 
         $rel = Invoke-RestMethod -Uri $releaseUrl -UseBasicParsing
 
-        # Tag is plain version number like "0.2.0" (no leading 'v')
         if ($rel.tag_name -notmatch '^([0-9]+\.[0-9]+\.[0-9]+)$') {
             Write-Log ("Self-update: cannot parse release tag '{0}' as X.Y.Z; skipping." -f $rel.tag_name)
             return
@@ -212,12 +167,10 @@ function Invoke-SelfUpdateByRelease {
 
         Write-Log "Self-update: newer script version available."
 
-        # 2) Try git pull if git is available and script is inside a git repo
         $git = Get-Command git.exe -ErrorAction SilentlyContinue
         $didGitUpdate = $false
 
         if ($git) {
-            # Find repo root by walking up until we see .git
             $repoDir = Split-Path -Parent $localPath
             while ($repoDir -and -not (Test-Path (Join-Path $repoDir '.git'))) {
                 $parent = Split-Path -Parent $repoDir
@@ -248,7 +201,6 @@ function Invoke-SelfUpdateByRelease {
             return
         }
 
-        # 3) HTTP fallback: download script from raw GitHub URL for this tag
         $rawUrl = "https://raw.githubusercontent.com/$ScriptRepo/$($rel.tag_name)/$ScriptRelativePath"
         Write-Log ("Self-update: downloading script from {0}" -f $rawUrl)
 
@@ -272,7 +224,6 @@ function Install-NetBirdTask {
 
     Write-Host "Installing / updating scheduled task '$TaskName' for NetBird delayed updates..."
 
-    # Full path to this script
     $scriptPath = $PSCommandPath
     if (-not $scriptPath) {
         $scriptPath = $MyInvocation.PSCommandPath
@@ -283,14 +234,12 @@ function Install-NetBirdTask {
         return
     }
 
-    # Validate DailyTime (HH:mm)
     if ($DailyTime -notmatch '^(?:[01]\d|2[0-3]):[0-5]\d$') {
         throw "Invalid DailyTime format '$DailyTime'. Expected HH:mm (24-hour)."
     }
 
     $startTime = [DateTime]::ParseExact($DailyTime, "HH:mm", $null)
 
-    # Build argument string for Run mode
     $argList = @()
     $argList += "-ExecutionPolicy Bypass"
     $argList += "-File `"$scriptPath`""
@@ -298,7 +247,6 @@ function Install-NetBirdTask {
     $argList += "-MaxRandomDelaySeconds $MaxRandomDelaySeconds"
     $argList += "-PackageName `"$PackageName`""
 
-    # No need to pass Install/Uninstall to the scheduled run
     $arguments = $argList -join " "
 
     Write-Host "Task will run command:"
@@ -317,7 +265,6 @@ function Install-NetBirdTask {
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
     }
 
-    # Settings (StartWhenAvailable controlled by -StartWhenAvailable / -r)
     if ($StartWhenAvailable) {
         Write-Host "The task will run as soon as possible after a missed start (StartWhenAvailable = true)."
         $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
@@ -326,7 +273,6 @@ function Install-NetBirdTask {
         $settings = New-ScheduledTaskSettingsSet
     }
 
-    # Remove existing task if present
     try {
         $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
         if ($existing) {
@@ -339,7 +285,6 @@ function Install-NetBirdTask {
         Write-Warning $msg
     }
 
-    # Register new task
     try {
         Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description "NetBird delayed Chocolatey update"
         Write-Host "Scheduled task '$TaskName' installed/updated successfully."
@@ -402,7 +347,9 @@ function Invoke-NetBirdDelayedUpdate {
     Write-Log "=== NetBird delayed update started ==="
     Write-Log "Parameters: DelayDays=$DelayDays, MaxRandomDelaySeconds=$MaxRandomDelaySeconds, PackageName=$PackageName"
 
-    # Random delay to spread out load on Chocolatey repo
+    $script:NetBirdInstalled = $false
+    $script:NetBirdUpgraded  = $false
+
     if ($MaxRandomDelaySeconds -gt 0) {
         $delay = Get-Random -Minimum 0 -Maximum $MaxRandomDelaySeconds
         Write-Log "Random delay before version check: $delay seconds."
@@ -472,7 +419,6 @@ function Invoke-NetBirdDelayedUpdate {
 
     Write-Log ("Repository candidate version for {0}: {1}" -f $PackageName, $candidateVersionString)
 
-    # Parse versions
     try {
         $installedVersion = [version]$installedVersionString
         $candidateVersion = [version]$candidateVersionString
@@ -484,7 +430,6 @@ function Invoke-NetBirdDelayedUpdate {
 
     $nowUtc = [DateTime]::UtcNow
 
-    # Load previous state
     $state = Load-State
     if ($null -eq $state -or $state.CandidateVersion -ne $candidateVersionString) {
         Write-Log "New candidate version detected (or no previous state). Resetting aging timer."
@@ -500,19 +445,16 @@ function Invoke-NetBirdDelayedUpdate {
         }
     }
 
-    # Compute age
     $age = $nowUtc - $firstSeenUtc
     $ageDays = [Math]::Round($age.TotalDays, 2)
     Write-Log "Candidate version age: $ageDays days (DelayDays=$DelayDays)."
 
-    # If DelayDays > 0 and candidate version is too new, skip upgrade
     if ($DelayDays -gt 0 -and $age.TotalDays -lt $DelayDays) {
         Write-Log "Version has not aged long enough. Skipping upgrade."
         Save-State -CandidateVersion $candidateVersionString -FirstSeenUtc $firstSeenUtc -LastCheckUtc $nowUtc
         return 0
     }
 
-    # Age is enough, check if we actually need to upgrade
     if ($installedVersion -ge $candidateVersion) {
         Write-Log "Local version $installedVersionString is already >= candidate $candidateVersionString. No upgrade required."
         Save-State -CandidateVersion $candidateVersionString -FirstSeenUtc $firstSeenUtc -LastCheckUtc $nowUtc
@@ -549,8 +491,8 @@ function Invoke-NetBirdDelayedUpdate {
     }
     else {
         Write-Log "Chocolatey upgrade completed successfully."
+        $script:NetBirdUpgraded = $true
 
-        # Try to start NetBird service again (if it exists)
         try {
             $svc = Get-Service -Name Netbird -ErrorAction SilentlyContinue
             if ($svc -and $svc.Status -ne 'Running') {
@@ -564,7 +506,6 @@ function Invoke-NetBirdDelayedUpdate {
         }
     }
 
-    # Save updated state
     Save-State -CandidateVersion $candidateVersionString -FirstSeenUtc $firstSeenUtc -LastCheckUtc $nowUtc
 
     Write-Log "=== NetBird delayed update finished ==="
@@ -580,7 +521,6 @@ function Invoke-NetBirdGuiUpdate {
     $guiStateFile = Join-Path $StateDir "gui-state.json"
     $guiState = $null
 
-    # Load GUI state if present
     if (Test-Path $guiStateFile) {
         try {
             $guiState = Get-Content $guiStateFile -Raw | ConvertFrom-Json
@@ -592,7 +532,6 @@ function Invoke-NetBirdGuiUpdate {
         }
     }
 
-    # Get latest release tag from GitHub (only for version number)
     $releaseUrl = "https://api.github.com/repos/netbirdio/netbird/releases/latest"
     Write-Log "Checking latest NetBird release on GitHub (for GUI update)..."
 
@@ -617,14 +556,12 @@ function Invoke-NetBirdGuiUpdate {
 
     Write-Log "Latest NetBird GUI release version (GitHub tag): $releaseVersion"
 
-    # If we already installed this GUI version according to gui-state.json, nothing to do
     if ($guiState -and $guiState.LastGuiVersion -eq $releaseVersion) {
         Write-Log "GUI already updated to version $releaseVersion according to gui-state.json - skipping GUI installer."
         return
     }
 
-    # Actual installer is served from pkgs.netbird.io, not from GitHub assets
-    $installerUrl  = "https://pkgs.netbird.io/windows/x64"   # always points to latest x64 installer
+    $installerUrl  = "https://pkgs.netbird.io/windows/x64"
     $installerName = "netbird-latest-windows-x64.exe"
     $installerPath = Join-Path $env:TEMP $installerName
 
@@ -639,7 +576,6 @@ function Invoke-NetBirdGuiUpdate {
         return
     }
 
-    # Run silent installer
     try {
         Write-Log "Running GUI installer silently (/S)..."
         Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
@@ -660,7 +596,6 @@ function Invoke-NetBirdGuiUpdate {
         }
     }
 
-    # Save GUI state so we do not reinstall the same version every run
     $guiState = [pscustomobject]@{
         LastGuiVersion   = $releaseVersion
         LastGuiUpdateUtc = [DateTime]::UtcNow
@@ -688,18 +623,19 @@ if ($Uninstall) {
     exit 0
 }
 
-# Optional: check for newer script version by GitHub release and update itself.
-# New version will be used on the next run.
 Invoke-SelfUpdateByRelease
 
-# Default: run update logic once (daemon + GUI)
 $script:NetBirdInstalled = $false
+$script:NetBirdUpgraded  = $false
+
 $code = Invoke-NetBirdDelayedUpdate
 
-if ($script:NetBirdInstalled) {
+if ($script:NetBirdInstalled -and $script:NetBirdUpgraded) {
     Invoke-NetBirdGuiUpdate
-} else {
+} elseif (-not $script:NetBirdInstalled) {
     Write-Log "Skipping GUI update because NetBird is not installed."
+} else {
+    Write-Log "Skipping GUI update because NetBird version did not change."
 }
 
 exit $code
