@@ -139,7 +139,8 @@ function Load-State {
         return $json | ConvertFrom-Json
     }
     catch {
-        Write-Log ("WARNING: Failed to read/parse state file '{0}': {1}" -f $StateFile, $_.Exception.Message)
+        $msg = "WARNING: Failed to read/parse state file '{0}': {1}" -f $StateFile, $_.Exception.Message
+        Write-Log $msg
         return $null
     }
 }
@@ -164,7 +165,8 @@ function Save-State {
         $json | Set-Content -Path $StateFile -Encoding UTF8
     }
     catch {
-        Write-Log ("WARNING: Failed to write state file '{0}': {1}" -f $StateFile, $_.Exception.Message)
+        $msg = "WARNING: Failed to write state file '{0}': {1}" -f $StateFile, $_.Exception.Message
+        Write-Log $msg
     }
 }
 
@@ -258,7 +260,8 @@ function Invoke-SelfUpdateByRelease {
         Write-Log "Self-update: script updated from raw GitHub. New version will be used on next run."
     }
     catch {
-        Write-Log ("Self-update: failed: {0}" -f $_.Exception.Message)
+        $msg = "Self-update: failed: {0}" -f $_.Exception.Message
+        Write-Log $msg
     }
 }
 
@@ -315,7 +318,7 @@ function Install-NetBirdTask {
 
     # Settings (StartWhenAvailable controlled by -StartWhenAvailable / -r)
     if ($StartWhenAvailable) {
-        Write-Host 'The task will run as soon as possible after a missed start (StartWhenAvailable = true).'
+        Write-Host "The task will run as soon as possible after a missed start (StartWhenAvailable = true)."
         $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
     }
     else {
@@ -331,7 +334,8 @@ function Install-NetBirdTask {
         }
     }
     catch {
-        Write-Warning ("Failed to check/remove existing task '{0}': {1}" -f $TaskName, $_.Exception.Message)
+        $msg = "Failed to check/remove existing task '{0}': {1}" -f $TaskName, $_.Exception.Message
+        Write-Warning $msg
     }
 
     # Register new task
@@ -340,7 +344,8 @@ function Install-NetBirdTask {
         Write-Host "Scheduled task '$TaskName' installed/updated successfully."
     }
     catch {
-        Write-Error ("Failed to register scheduled task '{0}': {1}" -f $TaskName, $_.Exception.Message)
+        $msg = "Failed to register scheduled task '{0}': {1}" -f $TaskName, $_.Exception.Message
+        Write-Error $msg
     }
 }
 
@@ -361,7 +366,8 @@ function Uninstall-NetBirdTask {
         }
     }
     catch {
-        Write-Warning ("Failed to remove task '{0}': {1}" -f $TaskName, $_.Exception.Message)
+        $msg = "Failed to remove task '{0}': {1}" -f $TaskName, $_.Exception.Message
+        Write-Warning $msg
     }
 
     if ($RemoveState) {
@@ -377,7 +383,8 @@ function Uninstall-NetBirdTask {
             }
         }
         catch {
-            Write-Warning ("Failed to remove '{0}': {1}" -f $StateDir, $_.Exception.Message)
+            $msg = "Failed to remove '{0}': {1}" -f $StateDir, $_.Exception.Message
+            Write-Warning $msg
         }
     }
 
@@ -409,7 +416,8 @@ function Invoke-NetBirdDelayedUpdate {
         $installedOutput = choco list --localonly $PackageName 2>$null
     }
     catch {
-        Write-Log ("ERROR: Failed to execute 'choco list --localonly {0}': {1}" -f $PackageName, $_.Exception.Message)
+        $msg = "ERROR: Failed to execute 'choco list --localonly {0}': {1}" -f $PackageName, $_.Exception.Message
+        Write-Log $msg
         return 1
     }
 
@@ -434,7 +442,8 @@ function Invoke-NetBirdDelayedUpdate {
         $infoOutput = choco info $PackageName 2>$null
     }
     catch {
-        Write-Log ("ERROR: Failed to execute 'choco info {0}': {1}" -f $PackageName, $_.Exception.Message)
+        $msg = "ERROR: Failed to execute 'choco info {0}': {1}" -f $PackageName, $_.Exception.Message
+        Write-Log $msg
         return 1
     }
 
@@ -516,7 +525,8 @@ function Invoke-NetBirdDelayedUpdate {
         }
     }
     catch {
-        Write-Log ("WARNING: Failed to stop NetBird service: {0}" -f $_.Exception.Message)
+        $msg = "WARNING: Failed to stop NetBird service: {0}" -f $_.Exception.Message
+        Write-Log $msg
     }
 
     # Run choco upgrade
@@ -540,7 +550,8 @@ function Invoke-NetBirdDelayedUpdate {
             }
         }
         catch {
-            Write-Log ("WARNING: Failed to start NetBird service: {0}" -f $_.Exception.Message)
+            $msg = "WARNING: Failed to start NetBird service: {0}" -f $_.Exception.Message
+            Write-Log $msg
         }
     }
 
@@ -566,7 +577,8 @@ function Invoke-NetBirdGuiUpdate {
             $guiState = Get-Content $guiStateFile -Raw | ConvertFrom-Json
         }
         catch {
-            Write-Log ("Failed to parse gui-state.json, it will be recreated. {0}" -f $_.Exception.Message)
+            $msg = "Failed to parse gui-state.json, it will be recreated. {0}" -f $_.Exception.Message
+            Write-Log $msg
             $guiState = $null
         }
     }
@@ -579,7 +591,8 @@ function Invoke-NetBirdGuiUpdate {
         $latestRelease = Invoke-RestMethod -Uri $releaseUrl -UseBasicParsing
     }
     catch {
-        Write-Log ("GitHub API call failed (GUI update skipped): {0}" -f $_.Exception.Message)
+        $msg = "GitHub API call failed (GUI update skipped): {0}" -f $_.Exception.Message
+        Write-Log $msg
         return
     }
 
@@ -597,7 +610,7 @@ function Invoke-NetBirdGuiUpdate {
 
     # If we already installed this GUI version according to gui-state.json, nothing to do
     if ($guiState -and $guiState.LastGuiVersion -eq $releaseVersion) {
-        Write-Log "GUI already updated to version $releaseVersion according to gui-state.json – skipping GUI installer."
+        Write-Log "GUI already updated to version $releaseVersion according to gui-state.json - skipping GUI installer."
         return
     }
 
@@ -612,7 +625,8 @@ function Invoke-NetBirdGuiUpdate {
         Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
     }
     catch {
-        Write-Log ("Failed to download GUI installer: {0}" -f $_.Exception.Message)
+        $msg = "Failed to download GUI installer: {0}" -f $_.Exception.Message
+        Write-Log $msg
         return
     }
 
@@ -623,7 +637,8 @@ function Invoke-NetBirdGuiUpdate {
         Write-Log "GUI installer finished successfully."
     }
     catch {
-        Write-Log ("GUI installer process failed: {0}" -f $_.Exception.Message)
+        $msg = "GUI installer process failed: {0}" -f $_.Exception.Message
+        Write-Log $msg
         return
     }
     finally {
@@ -631,7 +646,8 @@ function Invoke-NetBirdGuiUpdate {
             Remove-Item $installerPath -ErrorAction SilentlyContinue
         }
         catch {
-            Write-Log ("Failed to remove temporary GUI installer file: {0}" -f $_.Exception.Message)
+            $msg = "Failed to remove temporary GUI installer file: {0}" -f $_.Exception.Message
+            Write-Log $msg
         }
     }
 
@@ -646,7 +662,8 @@ function Invoke-NetBirdGuiUpdate {
         Write-Log "GUI state updated: version $releaseVersion."
     }
     catch {
-        Write-Log ("Failed to write gui-state.json: {0}" -f $_.Exception.Message)
+        $msg = "Failed to write gui-state.json: {0}" -f $_.Exception.Message
+        Write-Log $msg
     }
 }
 
