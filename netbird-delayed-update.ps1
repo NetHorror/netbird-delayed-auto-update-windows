@@ -1,4 +1,4 @@
-# Version: 0.2.0
+# Version: 0.2.1
 
 <#
 .SYNOPSIS
@@ -26,6 +26,47 @@
       -Run      (default) : perform delayed-update check and optional upgrade (daemon + GUI).
       -Install           : create / update the scheduled task that runs this script daily.
       -Uninstall         : remove the scheduled task (and optionally state/logs).
+
+.PARAMETER Install
+    Install or update the scheduled task that runs this script daily in Run mode.
+
+.PARAMETER Uninstall
+    Remove the scheduled task and optionally delete state/logs.
+
+.PARAMETER RemoveState
+    When used with -Uninstall, also delete C:\ProgramData\NetBirdDelayedUpdate (state & logs).
+
+.PARAMETER StartWhenAvailable
+    If the task is missed (e.g. computer was turned off), run the task as soon as possible
+    instead of waiting until the next scheduled time. Equivalent to Task Scheduler's
+    "Run task as soon as possible after a scheduled start is missed".
+
+.PARAMETER DelayDays
+    Minimum number of days that a NetBird version must be present in the Chocolatey repo
+    before it can be installed. Defaults to 10 days.
+    If 0, versions are installed as soon as they appear in the repo (no delay).
+
+.PARAMETER MaxRandomDelaySeconds
+    Maximum random delay (in seconds) added before each Run-mode check.
+    This helps to avoid all machines hitting the repo at once. Default: 3600 (1 hour).
+    If set to 0, no random delay is added.
+
+.PARAMETER DailyTime
+    Time of day (HH:mm) when the scheduled task should run. Default: "04:00".
+
+.PARAMETER TaskName
+    Human-readable name of the scheduled task. Default: "NetBird Delayed Choco Update".
+
+.PARAMETER RunAsCurrentUser
+    If set together with -Install, the task is created to run as the current user
+    with highest privileges. If not set, the task runs as SYSTEM.
+
+.PARAMETER PackageName
+    Chocolatey package name (defaults to "netbird").
+
+.PARAMETER LogRetentionDays
+    How many days to keep log files in C:\ProgramData\NetBirdDelayedUpdate.
+    Log files older than this will be removed on each run. Default: 60 days.
 #>
 
 [CmdletBinding(DefaultParameterSetName = "Run")]
@@ -42,7 +83,9 @@ param(
     [string]$TaskName = "NetBird Delayed Choco Update",
     [switch]$RunAsCurrentUser,
 
-    [string]$PackageName = "netbird"
+    [string]$PackageName = "netbird",
+
+    [int]$LogRetentionDays = 60
 )
 
 # ------------------ CONSTANTS / PATHS ------------------
@@ -53,7 +96,7 @@ $LogDir    = $StateDir
 
 # ------------- Script self-update settings -------------
 
-$ScriptVersion = [version]"0.2.0"
+$ScriptVersion = [version]"0.2.1"
 $ScriptRepo = "NetHorror/netbird-delayed-auto-update-windows"
 $ScriptRelativePath = "netbird-delayed-update.ps1"
 
@@ -68,6 +111,29 @@ function Ensure-StateDir {
     }
 }
 
+function Cleanup-OldLogs {
+    if ($LogRetentionDays -le 0) { return }
+
+    try {
+        if (Test-Path $LogDir) {
+            $cutoff = (Get-Date).AddDays(-$LogRetentionDays)
+
+            Get-ChildItem -Path $LogDir -Filter "netbird-delayed-update-*.log" -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -lt $cutoff } |
+                ForEach-Object {
+                    Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+                }
+        }
+    }
+    catch {
+        if ($script:LogFile) {
+            $ts   = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            $line = "{0} {1}" -f $ts, ("Log cleanup failed: {0}" -f $_.Exception.Message)
+            Add-Content -Path $script:LogFile -Value $line
+        }
+    }
+}
+
 # ------------------ LOGGING & STATE ------------------
 
 function Write-Log {
@@ -76,6 +142,7 @@ function Write-Log {
     Ensure-StateDir
 
     if (-not $script:LogFile) {
+        Cleanup-OldLogs
         $script:LogFile = Join-Path $LogDir ("netbird-delayed-update-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
     }
 
@@ -106,9 +173,9 @@ function Load-State {
 
 function Save-State {
     param(
-        [Parameter(Mandatory=$true)][string]$CandidateVersion,
-        [Parameter(Mandatory=$true)][DateTime]$FirstSeenUtc,
-        [Parameter(Mandatory=$true)][DateTime]$LastCheckUtc
+        [Parameter(Mandatory = $true)][string]$CandidateVersion,
+        [Parameter(Mandatory = $true)][DateTime]$FirstSeenUtc,
+        [Parameter(Mandatory = $true)][DateTime]$LastCheckUtc
     )
 
     Ensure-StateDir
@@ -246,6 +313,7 @@ function Install-NetBirdTask {
     $argList += "-DelayDays $DelayDays"
     $argList += "-MaxRandomDelaySeconds $MaxRandomDelaySeconds"
     $argList += "-PackageName `"$PackageName`""
+    $argList += "-LogRetentionDays $LogRetentionDays"
 
     $arguments = $argList -join " "
 
@@ -445,11 +513,15 @@ function Invoke-NetBirdDelayedUpdate {
         }
     }
 
-    $age = $nowUtc - $firstSeenUtc
-    $ageDays = [Math]::Round($age.TotalDays, 2)
+    # Compute age, clamp to >= 0 days to avoid negative values from clock skew
+    $age          = $nowUtc - $firstSeenUtc
+    $ageTotalDays = $age.TotalDays
+    if ($ageTotalDays -lt 0) { $ageTotalDays = 0 }
+
+    $ageDays = [Math]::Round($ageTotalDays, 2)
     Write-Log "Candidate version age: $ageDays days (DelayDays=$DelayDays)."
 
-    if ($DelayDays -gt 0 -and $age.TotalDays -lt $DelayDays) {
+    if ($DelayDays -gt 0 -and $ageTotalDays -lt $DelayDays) {
         Write-Log "Version has not aged long enough. Skipping upgrade."
         Save-State -CandidateVersion $candidateVersionString -FirstSeenUtc $firstSeenUtc -LastCheckUtc $nowUtc
         return 0
@@ -480,7 +552,6 @@ function Invoke-NetBirdDelayedUpdate {
         Write-Log $msg
     }
 
-    # Run choco upgrade
     Write-Log "Running: choco upgrade $PackageName -y --no-progress"
     & choco upgrade $PackageName -y --no-progress
     $chocoExit = $LASTEXITCODE
@@ -632,9 +703,11 @@ $code = Invoke-NetBirdDelayedUpdate
 
 if ($script:NetBirdInstalled -and $script:NetBirdUpgraded) {
     Invoke-NetBirdGuiUpdate
-} elseif (-not $script:NetBirdInstalled) {
+}
+elseif (-not $script:NetBirdInstalled) {
     Write-Log "Skipping GUI update because NetBird is not installed."
-} else {
+}
+else {
     Write-Log "Skipping GUI update because NetBird version did not change."
 }
 
