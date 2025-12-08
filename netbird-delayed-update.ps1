@@ -102,6 +102,7 @@ $ScriptRelativePath = "netbird-delayed-update.ps1"
 
 # will be initialised later when we know we are in Run mode
 $script:LogFile = $null
+$script:NetBirdInstalled = $false
 
 function Ensure-StateDir {
     if (-not (Test-Path $StateDir)) {
@@ -411,53 +412,61 @@ function Invoke-NetBirdDelayedUpdate {
         Write-Log "Random delay disabled (MaxRandomDelaySeconds=0)."
     }
 
-    # Query locally installed version via choco
+    # -------- Installed version (local) --------
     try {
-        $installedOutput = choco list --localonly $PackageName 2>$null
+        $installedOutput = choco list --localonly $PackageName --exact --limit-output 2>$null
     }
     catch {
-        $msg = "ERROR: Failed to execute 'choco list --localonly {0}': {1}" -f $PackageName, $_.Exception.Message
+        $msg = "ERROR: Failed to execute 'choco list --localonly {0} --exact --limit-output': {1}" -f $PackageName, $_.Exception.Message
         Write-Log $msg
         return 1
     }
 
     $installedVersionString = $null
-    foreach ($line in $installedOutput) {
-        # Typical: "netbird 0.60.7"
-        if ($line -match "^\s*${PackageName}\s+([0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?)") {
-            $installedVersionString = $Matches[1]
-            break
+    if ($installedOutput) {
+        $escapedName = [Regex]::Escape($PackageName)
+        foreach ($line in $installedOutput) {
+            # Example: "netbird|0.60.7"
+            if ($line -match ("^\s*{0}\|([^\|]+)" -f $escapedName)) {
+                $installedVersionString = $Matches[1].Trim()
+                break
+            }
         }
     }
 
     if (-not $installedVersionString) {
         Write-Log ("Package '{0}' is not installed locally. Nothing to update. Exiting." -f $PackageName)
+        $script:NetBirdInstalled = $false
         return 0
     }
 
+    $script:NetBirdInstalled = $true
     Write-Log "Installed $PackageName version: $installedVersionString"
 
-    # Query latest version from choco repo
+    # -------- Candidate version in repo --------
     try {
-        $infoOutput = choco info $PackageName 2>$null
+        $repoOutput = choco search $PackageName --exact --limit-output 2>$null
     }
     catch {
-        $msg = "ERROR: Failed to execute 'choco info {0}': {1}" -f $PackageName, $_.Exception.Message
+        $msg = "ERROR: Failed to execute 'choco search {0} --exact --limit-output': {1}" -f $PackageName, $_.Exception.Message
         Write-Log $msg
         return 1
     }
 
     $candidateVersionString = $null
-    foreach ($line in $infoOutput) {
-        # Typical: "Latest   : 0.60.7"
-        if ($line -match "Latest\s*:\s*([0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?)") {
-            $candidateVersionString = $Matches[1]
-            break
+    if ($repoOutput) {
+        $escapedName = [Regex]::Escape($PackageName)
+        foreach ($line in $repoOutput) {
+            # Example: "netbird|0.60.7|https://community.chocolatey.org/packages/netbird"
+            if ($line -match ("^\s*{0}\|([^\|]+)" -f $escapedName)) {
+                $candidateVersionString = $Matches[1].Trim()
+                break
+            }
         }
     }
 
     if (-not $candidateVersionString) {
-        Write-Log "ERROR: Could not determine candidate version from 'choco info $PackageName'."
+        Write-Log "ERROR: Could not determine candidate version from 'choco search'."
         return 1
     }
 
@@ -684,6 +693,13 @@ if ($Uninstall) {
 Invoke-SelfUpdateByRelease
 
 # Default: run update logic once (daemon + GUI)
+$script:NetBirdInstalled = $false
 $code = Invoke-NetBirdDelayedUpdate
-Invoke-NetBirdGuiUpdate
+
+if ($script:NetBirdInstalled) {
+    Invoke-NetBirdGuiUpdate
+} else {
+    Write-Log "Skipping GUI update because NetBird is not installed."
+}
+
 exit $code
