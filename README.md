@@ -2,382 +2,268 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform: Windows](https://img.shields.io/badge/platform-Windows-informational) ![PowerShell](https://img.shields.io/badge/PowerShell-5%2B-brightgreen) ![Package manager: Chocolatey](https://img.shields.io/badge/package%20manager-Chocolatey-8A4513)
 
-> Delayed (staged) auto-update for the NetBird client on Windows (Server 2019+ / Windows 10+).
+PowerShell script that implements *delayed / staged* updates for the NetBird Windows client installed via Chocolatey.
 
-- Do **not** upgrade NetBird immediately when a new version appears in Chocolatey.
-- Wait `DelayDays` days. If that version is quickly replaced (hotfix / bad release), clients will never see it.
-- When the version has “aged” enough, the script:
-  - upgrades the **NetBird daemon** via Chocolatey;
-  - updates the **NetBird GUI** via the official Windows installer;
-  - can optionally **update the script itself** from GitHub releases.
+Instead of upgrading to the latest Chocolatey version immediately, new versions must “age” for a configurable number of days before they are allowed to be installed. Short-lived or bad releases that get quickly replaced will never reach your machines.
 
----
+The script can also:
 
-## Idea
+- auto-update the **NetBird GUI** from the official installer feed;
+- **self-update** based on GitHub releases of this repo;
+- keep its own log files under control with configurable log retention.
 
-- A candidate NetBird version in the Chocolatey repository must “age” for `DelayDays` days before it is allowed to be installed.
-- If the same version stays in the repo for `DelayDays` without changes, the installed client is upgraded.
-- If a newer version appears, the aging timer is reset and the counter starts from zero again.
-- NetBird is **not auto-installed** – only upgraded if it is already installed via Chocolatey.
-- A Windows Task Scheduler task runs a single PowerShell script once per day.
-- State and logs are stored in:
-
-~~~text
-C:\ProgramData\NetBirdDelayedUpdate\
-~~~
-
-- `state.json` – aging state for the daemon (Chocolatey side).
-- `gui-state.json` – last GUI version installed by the script.
-- `netbird-delayed-update-*.log` – detailed logs for each run.
+> Tested with NetBird installed from the Chocolatey package `netbird`.
 
 ---
 
 ## Features
 
-- ⏳ **Version aging**  
-  Only upgrades NetBird after a candidate version has been present in Chocolatey for at least `DelayDays`.
-
-- 📦 **Daemon update via Chocolatey**  
-  Uses `choco upgrade netbird` (or another package if `-PackageName` is overridden) after the aging period.
-
-- 🖥️ **GUI auto-update** (since `0.2.0`)  
-  - Reads the latest NetBird release version from GitHub.
-  - Downloads the latest Windows x64 installer from  
-    `https://pkgs.netbird.io/windows/x64`.
-  - Runs the installer silently (`/S`).
-  - Tracks the last GUI version in `gui-state.json` to avoid reinstalling the same version on every run.
-
-- 🔁 **Script self-update** (since `0.2.0`)  
-  - Reads the latest release of this repository: `NetHorror/netbird-delayed-auto-update-windows`.
-  - Compares the release tag (e.g. `0.2.0`) with the local `$ScriptVersion` inside the script.
-  - If the remote version is newer:
-    1. Tries `git pull --ff-only` in the repository root (if the script is inside a git repo).
-    2. If git is not available or it is not a repo, downloads
-       `netbird-delayed-update.ps1` from the matching tag on `raw.githubusercontent.com` and overwrites the local file.
-  - The updated script is used on the **next** run.
-
-- 🧰 **Single script, three modes**
-  - Install scheduled task
-  - Uninstall scheduled task
-  - Run delayed-update logic (what the task uses)
-
-- ⚙️ **Optional catch-up after missed runs**  
-  `-StartWhenAvailable` / `-r` enables Task Scheduler option *“Run task as soon as possible after a scheduled start is missed”*.
-
-- 📜 **Detailed logs**  
-  Every decision (new version seen, still aging, upgraded, up-to-date, GUI updated/skipped, self-update result, errors) is logged to a timestamped file.
+- **Delayed rollout for NetBird (Chocolatey)**
+  - New package versions must exist in the Chocolatey feed for at least `DelayDays` days before upgrade.
+  - Age is tracked per candidate version in a local `state.json` file.
+- **Randomized scheduling**
+  - Optional random delay before each run via `MaxRandomDelaySeconds` to avoid thundering-herd upgrades.
+- **NetBird GUI auto-update**
+  - Detects the latest NetBird version from GitHub releases.
+  - Downloads the latest Windows x64 GUI installer from `https://pkgs.netbird.io/windows/x64`.
+  - Installs it silently (`/S`).
+  - Tracks last installed GUI version in `gui-state.json` to avoid re-installing the same version.
+  - GUI is only updated when the daemon was actually upgraded during the current run.
+- **Script self-update**
+  - Compares the local `$ScriptVersion` with the latest GitHub release tag of this repo.
+  - Uses `git pull` when inside a git repo, otherwise downloads the script from the tagged version on GitHub.
+- **Log retention**
+  - Logs to date-stamped files under `C:\ProgramData\NetBirdDelayedUpdate`.
+  - Old log files are automatically deleted based on `LogRetentionDays` (default: 60 days).
+- **System-friendly**
+  - Uses the existing NetBird Chocolatey package.
+  - Works well as a scheduled task (SYSTEM or current user with highest privileges).
 
 ---
 
 ## Requirements
 
-- Windows Server 2019+ or Windows 10+
-- PowerShell 5+
-- Installed [Chocolatey](https://chocolatey.org)
-- NetBird installed via Chocolatey:
-
-~~~powershell
-choco install netbird -y
-~~~
-
-- Optional: [Git](https://git-scm.com) – for `git clone` and for script self-update via `git pull`.
-- Administrator privileges to create/remove scheduled tasks.
-- Outbound HTTPS to:
-  - `chocolatey.org` – to read package versions,
-  - `api.github.com` – to read NetBird and script releases,
-  - `pkgs.netbird.io` – to download the NetBird GUI installer,
-  - `raw.githubusercontent.com` – HTTP fallback for script self-update.
+- Windows with PowerShell (Windows PowerShell 5.1 or PowerShell 7+).
+- [Chocolatey](https://chocolatey.org/) installed.
+- NetBird installed via Chocolatey (default package name: `netbird`).
 
 ---
 
-## Repository structure
+## Installation & usage
+
+### 1. Download the script
+
+Copy `netbird-delayed-update.ps1` from this repository to a directory on the target machine, for example:
 
 ~~~text
-netbird-delayed-auto-update-windows/
-├─ README.md
-├─ CHANGELOG.md
-├─ LICENSE
-└─ netbird-delayed-update.ps1
+C:\Windows\System32\netbird-delayed-auto-update-windows\netbird-delayed-update.ps1
 ~~~
 
-All logic lives in the single `netbird-delayed-update.ps1` script.
+Make sure the directory is readable and the script is executable by the account that will be running the scheduled task.
 
 ---
 
-## Quick start
+### 2. One-off manual run (for testing)
 
-Open **PowerShell as Administrator**:
-
-~~~powershell
-# Clone and install scheduled task with defaults:
-#   DelayDays=10, MaxRandomDelaySeconds=3600, DailyTime=04:00,
-#   run as SYSTEM with highest privileges and bypass script execution policy
-
-git clone https://github.com/NetHorror/netbird-delayed-auto-update-windows.git
-cd netbird-delayed-auto-update-windows
-powershell -ExecutionPolicy Bypass -File netbird-delayed-update.ps1 -Install
-~~~
-
-If you do not have Git installed, you can download the repository as a ZIP in GitHub
-(**Code → Download ZIP**), extract it and run:
+You can run the script manually to test the logic without waiting for the scheduled task:
 
 ~~~powershell
-cd C:\Path\To\netbird-delayed-auto-update-windows
-
-# Install scheduled task:
-.\netbird-delayed-update.ps1 -Install
+powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
+  -DelayDays 0 `
+  -MaxRandomDelaySeconds 0
 ~~~
 
-After successful installation, you should see a scheduled task named:
+This will:
 
-> `NetBird Delayed Choco Update`
-
-in the Windows Task Scheduler.
+1. Check the installed NetBird version via Chocolatey.
+2. Check the candidate version from the Chocolatey feed.
+3. Decide whether an upgrade is needed (taking `DelayDays` into account).
+4. If an upgrade was performed, try to restart the NetBird service.
+5. If the daemon was upgraded, optionally update the NetBird GUI.
+6. Clean up old log files according to `LogRetentionDays`.
 
 ---
 
-## Modes and parameters
+### 3. Install the scheduled task
 
-The script has three modes:
-
-- **Run mode** (default – no `-Install` / `-Uninstall`)  
-  Performs a single delayed-update check. This is what the scheduled task runs every day.
-
-- **Install mode** – `-Install` / `-i`  
-  Creates or updates the scheduled task that runs this script once per day.
-
-- **Uninstall mode** – `-Uninstall` / `-u`  
-  Removes the scheduled task (optionally the state/logs directory).
-
-### Install examples
+To install a daily scheduled task (recommended):
 
 ~~~powershell
-# Install scheduled task with defaults
-.\netbird-delayed-update.ps1 -Install
-
-# Install task that waits 10 days and uses no random delay
-.\netbird-delayed-update.ps1 -Install -DelayDays 10 -MaxRandomDelaySeconds 0
-
-# Install task that also runs as soon as possible after a missed schedule
-.\netbird-delayed-update.ps1 -Install -StartWhenAvailable
-# or shorter:
-.\netbird-delayed-update.ps1 -i -r
-
-# Install the task to run as the current user instead of SYSTEM
-.\netbird-delayed-update.ps1 -Install -RunAsCurrentUser
+powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
+  -Install `
+  -DelayDays 10 `
+  -MaxRandomDelaySeconds 3600 `
+  -LogRetentionDays 60 `
+  -StartWhenAvailable
 ~~~
 
-### Supported options
+This will:
 
-- `-DelayDays N` – how many days a new Chocolatey NetBird version must stay unchanged before upgrade  
-  (default: `10`).
+- create (or update) a scheduled task named **"NetBird Delayed Choco Update"**;
+- schedule it to run daily at `04:00` by default;
+- run with **SYSTEM** privileges by default;
+- call the script in **Run mode** with the given parameters.
 
-- `-MaxRandomDelaySeconds N` – max random delay (seconds) added after the scheduled time  
-  (default: `3600`).
+#### Run task as the current user
 
-- `-DailyTime "HH:mm"` – time of day (24h) when the task should start  
-  (default: `04:00`).
+If you prefer the task to run as the current user (with highest privileges):
 
-- `-TaskName NAME` – name of the scheduled task  
-  (default: `NetBird Delayed Choco Update`).
-
-- `-RunAsCurrentUser` – run the scheduled task as the current user instead of `SYSTEM`.
-
-- `-PackageName NAME` – Chocolatey package name (default: `netbird`).
-
-- `-StartWhenAvailable` / `-r` – when used with `-Install`, enables Task Scheduler option  
-  *“Run task as soon as possible after a scheduled start is missed”*.
-
-- `-RemoveState` – when used with `-Uninstall`, also remove the state/log directory.
+~~~powershell
+powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
+  -Install `
+  -DelayDays 10 `
+  -MaxRandomDelaySeconds 3600 `
+  -LogRetentionDays 60 `
+  -StartWhenAvailable `
+  -RunAsCurrentUser
+~~~
 
 ---
 
-## How it works
+### 4. Uninstall the scheduled task
 
-### 1. Scheduled task
-
-Once per day, Task Scheduler runs something like:
+To remove the scheduled task:
 
 ~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File "C:\Path\To\netbird-delayed-update.ps1" `
-  -DelayDays <DelayDays> `
-  -MaxRandomDelaySeconds <MaxRandomDelaySeconds>
+powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 -Uninstall
 ~~~
 
-### 2. Daemon update (Chocolatey)
+To also remove state and logs (`C:\ProgramData\NetBirdDelayedUpdate`):
 
-On each run, the script:
+~~~powershell
+powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 -Uninstall -RemoveState
+~~~
 
-1. (Optionally) sleeps for a random number of seconds between `0` and `MaxRandomDelaySeconds`.
-2. Checks that `choco` (Chocolatey) is available in `PATH`.
-3. Reads the locally installed NetBird version from Chocolatey (`PackageName`, default `netbird`).
-4. Reads the candidate NetBird version from the Chocolatey repository.
-5. If NetBird is not installed locally, exits without doing anything (no auto-install).
-6. Loads `state.json`, which stores:
-   - `CandidateVersion` – last candidate version seen in the repo;
-   - `FirstSeenUtc` – when that version was first observed;
-   - `LastCheckUtc` – when it was last checked.
-7. If the candidate version changed (or state is missing), it:
-   - logs that a new candidate version was detected,
-   - resets the aging timer by setting `FirstSeenUtc` to now.
-8. Computes the candidate age in days.
-   - If `age < DelayDays`, logs that it is too early and exits without upgrade.
-9. If `age >= DelayDays` **and** the local version is older:
-   - logs the planned upgrade;
-   - tries to stop the `Netbird` Windows service;
-   - runs `choco upgrade <PackageName> -y --no-progress`;
-   - tries to start the service again;
-   - saves updated `state.json`.
-10. If the local version is already up to date (or newer), it logs that there is nothing to do and only touches timestamps in `state.json`.
+---
 
-Short-lived or “bad” versions that get replaced quickly in Chocolatey never pass the `DelayDays` filter and therefore are never deployed.
+## Behaviour details
 
-### 3. GUI auto-update
+### Delayed rollout (Chocolatey)
 
-After the Chocolatey/daemon part, the script:
+The script keeps a simple JSON state file:
 
-1. Fetches the latest NetBird release from GitHub and extracts the version (e.g. `0.60.7`).
-2. Reads `gui-state.json` to see which GUI version it last installed (if any).
-3. If the stored GUI version equals the latest release, it logs that GUI is already up to date and exits this phase.
-4. If a newer GUI version is available:
-   - downloads the current Windows x64 installer from  
-     `https://pkgs.netbird.io/windows/x64` to `%TEMP%`;
-   - runs the installer silently with `/S`;
-   - removes the temporary installer file;
-   - updates `gui-state.json` with:
-     - `LastGuiVersion` – the version from the latest release;
-     - `LastGuiUpdateUtc` – timestamp of the update.
+~~~text
+C:\ProgramData\NetBirdDelayedUpdate\state.json
+~~~
 
-### 4. Script self-update
+It stores:
 
-At the beginning of each run (before the daemon/GUI logic), the script can optionally self-update:
+- the current **candidate version** from Chocolatey;
+- when this candidate was **first seen** (`FirstSeenUtc`);
+- when the last check occurred.
 
-1. Requests the latest release for this repository (`NetHorror/netbird-delayed-auto-update-windows`).
-2. Compares the release tag (e.g. `0.2.0`) with the local `$ScriptVersion` constant defined at the top of the script.
-3. If the remote version is newer:
+On each run:
 
-   - Tries to find a `.git` directory by walking up from the script path.
-   - If found and `git` is available:
-     - runs `git pull --ff-only` in the repository root;
-     - logs success or failure.
-   - If git is not available or no repository is found:
-     - downloads `netbird-delayed-update.ps1` from  
-       `https://raw.githubusercontent.com/NetHorror/netbird-delayed-auto-update-windows/<tag>/netbird-delayed-update.ps1`;
-     - overwrites the local script file.
+1. It queries the installed NetBird version via:
 
-4. The current run continues with the existing code; the new version of the script will be used on the **next** run.
+   - `choco list netbird --localonly --exact --limit-output`
 
-To disable self-update, you can either:
+2. It queries the candidate version in the repo via:
 
-- set `$ScriptRepo` to an empty string in the script, or
-- comment out the call to `Invoke-SelfUpdateByRelease` at the end of the file.
+   - `choco search netbird --exact --limit-output`
+
+3. It compares the candidate version with the currently installed version.
+4. If the candidate is **newer**:
+   - it calculates how long this version has been in the repo based on `FirstSeenUtc`;
+   - the age is **clamped to at least 0 days** to avoid negative values from clock skew;
+   - only if `ageDays >= DelayDays` will the script run:
+
+     - `choco upgrade netbird -y --no-progress`
+
+5. If no upgrade is needed, the state file is updated with the latest check time.
+
+If the NetBird package is **not installed locally**, the script logs this and exits with code `0`.
+
+---
+
+### NetBird GUI auto-update
+
+If the NetBird daemon was successfully upgraded during this run, the script:
+
+1. Queries the latest NetBird release from GitHub:
+
+   - `https://api.github.com/repos/netbirdio/netbird/releases/latest`
+
+2. Parses the tag name (`vX.Y.Z` or `X.Y.Z`) into a plain version string like `0.60.7`.
+3. Checks the GUI state file:
+
+   ~~~text
+   C:\ProgramData\NetBirdDelayedUpdate\gui-state.json
+   ~~~
+
+   - if `LastGuiVersion` equals the latest version → GUI update is skipped.
+
+4. If the GUI is out of date:
+   - downloads the latest x64 installer from:
+
+     ~~~text
+     https://pkgs.netbird.io/windows/x64
+     ~~~
+
+   - runs it silently with `/S`;
+   - updates `gui-state.json` with the new GUI version and timestamp.
+
+The GUI installer is **not** invoked if:
+
+- the NetBird package is not installed, or
+- the daemon version did not change in this run.
+
+---
+
+### Script self-update
+
+The script can optionally update itself based on GitHub releases of this repo.
+
+On each run (before doing anything else) it:
+
+1. Checks the latest release of `NetHorror/netbird-delayed-auto-update-windows` via GitHub API.
+2. Compares its tag (e.g. `0.2.1`) with the local `$ScriptVersion`.
+3. If the remote version is **newer**:
+   - tries to find a `.git` repo above the script path and run:
+
+     ~~~powershell
+     git -C <repoRoot> pull --ff-only
+     ~~~
+
+   - if that fails or `git` is not available:
+     - downloads `netbird-delayed-update.ps1` from:
+
+       ~~~text
+       https://raw.githubusercontent.com/NetHorror/netbird-delayed-auto-update-windows/<tag>/netbird-delayed-update.ps1
+       ~~~
+
+     - overwrites the local script.
+
+The updated script is used on the **next** run.
+
+To disable self-update, you can:
+
+- set `$ScriptRepo = ""` in the script, or
+- comment out the `Invoke-SelfUpdateByRelease` call at the bottom.
 
 ---
 
 ## Logs and state
 
-All state and log files live under:
+All runtime files live under:
 
 ~~~text
 C:\ProgramData\NetBirdDelayedUpdate\
 ~~~
 
-- `state.json` – aging and last-seen information for the Chocolatey package.
-- `gui-state.json` – last GUI version installed and timestamp.
-- `netbird-delayed-update-YYYYMMDD-HHMMSS.log` – log per run.
+- `state.json` – delayed rollout state for the daemon (candidate version, first seen, last check).
+- `gui-state.json` – last installed GUI version and last update time.
+- `netbird-delayed-update-*.log` – per-run logs; old files are cleaned up according to `LogRetentionDays`.
 
-Typical things you can see in logs:
-
-- when a candidate daemon version was first seen and how long it aged;
-- when an upgrade actually happened;
-- GUI update decisions (skipped/already up to date/downloaded/installed);
-- script self-update attempts and outcomes;
-- warnings or errors (Chocolatey not found, version parsing, HTTP failures, etc.).
+By default, log files older than **60 days** are removed automatically.
 
 ---
 
-## Task Scheduler notes
+## Versioning & changelog
 
-When random delay is enabled, the scheduled task may show:
+This project uses semantic versioning:
 
-- `Status = Running`
-- `Last Run Result = 0x41301` (*The task is currently running*).
+- `0.2.1` – current stable (log retention, safe age, smarter GUI).
+- `0.2.0` – GUI auto-update, script self-update, default `DelayDays = 10`.
 
-This usually just means the script is sleeping during the random delay window.
-
-If you install the task **without** `-StartWhenAvailable` (default):
-
-- if the machine is powered off at the scheduled time (e.g. `04:00`),
-- that day’s run is skipped,
-- the next run happens at the next scheduled time.
-
-If you install the task **with** `-StartWhenAvailable` / `-r`:
-
-- Task Scheduler will also run the task as soon as possible after a missed start,
-- e.g. right after a laptop is powered on in the morning,
-- similar to a "Run at load" behaviour on other platforms.
-
----
-
-## Manual one-off run (for testing)
-
-You can run the delayed-update logic manually, without Task Scheduler:
-
-~~~powershell
-# Run immediately, no random delay, no "aging" period (for testing)
-.\netbird-delayed-update.ps1 -DelayDays 0 -MaxRandomDelaySeconds 0
-~~~
-
-This will:
-
-- perform all checks,
-- log decisions,
-- update `state.json`,
-- and, if needed, run `choco upgrade netbird -y --no-progress` and the GUI installer.
-
----
-
-## Uninstall
-
-To remove the scheduled task (keep state/logs):
-
-~~~powershell
-cd netbird-delayed-auto-update-windows
-.\netbird-delayed-update.ps1 -Uninstall
-# or shorter:
-# .\netbird-delayed-update.ps1 -u
-~~~
-
-To remove both the task and the state/logs directory:
-
-~~~powershell
-cd netbird-delayed-auto-update-windows
-.\netbird-delayed-update.ps1 -Uninstall -RemoveState
-# or shorter:
-# .\netbird-delayed-update.ps1 -u -RemoveState
-~~~
-
-NetBird itself is not removed – only the delayed-update mechanism.
-
----
-
-## Changelog
-
-The full list of notable changes and release history is maintained in:
-
-~~~text
-CHANGELOG.md
-~~~
-
-Each GitHub Release corresponds to an entry in `CHANGELOG.md` and a matching script `$ScriptVersion`.
-
----
-
-## Versioning
-
-- Script version is stored in `$ScriptVersion` at the top of `netbird-delayed-update.ps1`.
-- GitHub releases of this repository use plain tags like `0.2.0` (no leading `v`).
-- Self-update compares `$ScriptVersion` with the latest release tag and updates the script when the tag is newer.
-
-For detailed history of changes, see `CHANGELOG.md` and the GitHub Releases page.
+See [`CHANGELOG.md`](./CHANGELOG.md) for a full list of changes.
