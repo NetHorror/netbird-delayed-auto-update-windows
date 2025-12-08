@@ -1,47 +1,70 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project will be documented in this file.  
+This project uses [semantic versioning](https://semver.org/) and GitHub releases as the primary source of truth.
 
-## [0.2.0] - 2025-12-08
+## [0.2.1] – 2025-12-09
+
 ### Added
-- Automatic NetBird GUI update:
-  - Fetches latest release version from GitHub.
-  - Downloads the latest Windows x64 installer from `https://pkgs.netbird.io/windows/x64`.
-  - Installs silently and tracks the last GUI version in `gui-state.json`.
-- Script self-update mechanism:
-  - Compares local `$ScriptVersion` with the latest GitHub release tag.
-  - Tries `git pull --ff-only` if the script is inside a git repository.
-  - Falls back to downloading the script from raw GitHub for the release tag when git is not available.
+
+- New parameter: `-LogRetentionDays` (default: 60 days).
+  - Log files `netbird-delayed-update-*.log` in `C:\ProgramData\NetBirdDelayedUpdate\` older than `LogRetentionDays` are automatically deleted on each run.
+  - `LogRetentionDays = 0` disables log cleanup.
 
 ### Changed
-- Main run flow now:
-  1. Optionally updates the script itself based on GitHub releases.
-  2. Runs the existing delayed Chocolatey-based update for the NetBird daemon.
-  3. Runs the GUI auto-update logic.
-- Logging extended to cover GUI updates and self-update decisions.
 
-### Notes
-- Existing state file `state.json` format is unchanged.
-- New file `gui-state.json` is used exclusively for GUI version tracking.
-- Existing scheduled tasks can continue to be used without changes.
+- Normalised candidate version “age”:
+  - Age in days is now clamped to a minimum of `0` to avoid negative values when system time moves backwards.
+  - `DelayDays` comparisons use the clamped value.
+- GUI update now runs only when:
+  - the NetBird package is installed via Chocolatey, **and**
+  - the daemon version was actually upgraded during the current run.
+- Documentation updated to describe `LogRetentionDays` and the new behaviour.
 
-## [0.1.1] - 2025-11-30
+## [0.2.0] – 2025-12-08
+
 ### Added
-- `-StartWhenAvailable` / `-r` flag to enable Task Scheduler
-  “Run task as soon as possible after a scheduled start is missed”.
-- Additional README documentation about:
-  - Missed runs on laptops and mobile devices.
-  - Task Scheduler status / result codes (including `0x41301`).
 
-### Notes
-- State file format unchanged compared to `0.1.0`.
-- To benefit from the new scheduling behaviour, users can reinstall the task with `-StartWhenAvailable`.
+- NetBird GUI auto-update:
+  - Fetches the latest NetBird release tag from GitHub (for the version number only).
+  - Downloads the latest Windows x64 GUI installer from `https://pkgs.netbird.io/windows/x64`.
+  - Runs the installer silently (`/S`).
+  - Tracks last installed GUI version in `gui-state.json` under `C:\ProgramData\NetBirdDelayedUpdate\` to avoid reinstalling the same version.
 
-## [0.1.0] - 2025-11-30
+- Script self-update:
+  - Checks the latest release of this repository via GitHub API.
+  - Compares the release tag (e.g. `0.2.0`) with the local `$ScriptVersion`.
+  - If newer:
+    - attempts `git pull --ff-only` when the script is inside a git repository;
+    - falls back to downloading the script from the corresponding tag on `raw.githubusercontent.com` and overwriting the local file.
+  - The updated script is used on the **next** run; the current run continues with the old version.
+
+### Changed
+
+- Default `DelayDays` increased from `3` to `10` days to reduce the chance of installing short-lived / bad releases.
+- More robust Chocolatey version detection:
+  - Installed version: `choco list <package> --localonly --exact --limit-output`.
+  - Repository version: `choco search <package> --exact --limit-output`.
+  - Versions are parsed from the `name|version|...` format and support 3- or 4-part versions (e.g. `0.60.7` or `0.60.7.1`).
+- If the package is not installed locally, the script logs this and exits with code 0 (no error), instead of treating it as a failure.
+- Fixed various PowerShell parsing issues in logging code for wider compatibility.
+
+## [0.1.1] – 2025-xx-xx
+
+### Changed
+
+- Improved scheduled task installation and uninstallation:
+  - More robust handling when the task already exists.
+  - Clearer messages and failure handling.
+- Minor logging improvements.
+
+## [0.1.0] – 2025-xx-xx
+
 ### Added
-- Initial public release:
-  - Delayed (staged) auto-update for NetBird installed via Chocolatey.
-  - Version “aging”: new NetBird version must stay in Chocolatey for `DelayDays` before rollout.
-  - Daily scheduled task with optional random delay (`MaxRandomDelaySeconds`).
-  - Local state tracking in `C:\ProgramData\NetBirdDelayedUpdate\state.json`.
-  - Logging of all decisions and upgrade attempts in `C:\ProgramData\NetBirdDelayedUpdate\`.
+
+- Initial release.
+- Delayed Chocolatey upgrade logic for `netbird`:
+  - Track candidate version and first-seen timestamp in `state.json`.
+  - Only allow upgrade once the version has “aged” for at least `DelayDays`.
+  - Optional random delay (`MaxRandomDelaySeconds`) before each run.
+- Basic install/uninstall of a daily scheduled task under SYSTEM.
