@@ -1,3 +1,5 @@
+# Version: 0.2.0
+
 <#
 .SYNOPSIS
     NetBird delayed auto-update for Windows (Chocolatey) + GUI updater + script self-update.
@@ -41,7 +43,7 @@
 
 .PARAMETER DelayDays
     Minimum number of days that a NetBird version must be present in the Chocolatey repo
-    before it can be installed. Defaults to 3 days.
+    before it can be installed. Defaults to 10 days.
     If 0, versions are installed as soon as they appear in the repo (no delay).
 
 .PARAMETER MaxRandomDelaySeconds
@@ -71,7 +73,7 @@ param(
 
     [Alias("r")][switch]$StartWhenAvailable,
 
-    [int]$DelayDays = 3,
+    [int]$DelayDays = 10,
     [int]$MaxRandomDelaySeconds = 3600,
     [string]$DailyTime = "04:00",
     [string]$TaskName = "NetBird Delayed Choco Update",
@@ -89,8 +91,8 @@ $LogDir    = $StateDir
 # ------------- Script self-update settings -------------
 
 # Local script version. Bump this on every script release.
-# Example: 1.0.0, 1.0.1, 1.1.0 (no leading 'v').
-$ScriptVersion = [version]"1.0.0"
+# Example: 0.2.0, 0.2.1, 0.3.0 (no leading 'v').
+$ScriptVersion = [version]"0.2.0"
 
 # GitHub repository that hosts this script (owner/repo).
 $ScriptRepo = "NetHorror/netbird-delayed-auto-update-windows"
@@ -191,7 +193,7 @@ function Invoke-SelfUpdateByRelease {
 
         $rel = Invoke-RestMethod -Uri $releaseUrl -UseBasicParsing
 
-        # Tag is plain version number like "1.2.3" (no leading 'v')
+        # Tag is plain version number like "0.2.0" (no leading 'v')
         if ($rel.tag_name -notmatch '^([0-9]+\.[0-9]+\.[0-9]+)$') {
             Write-Log "Self-update: cannot parse release tag '$($rel.tag_name)' as X.Y.Z; skipping."
             return
@@ -413,16 +415,16 @@ function Invoke-NetBirdDelayedUpdate {
 
     $installedVersionString = $null
     foreach ($line in $installedOutput) {
-        # Expect: "netbird 1.2.3"
-        if ($line -match "^\s*${PackageName}\s+([0-9]+\.[0-9]+\.[0-9]+)") {
+        # Typical: "netbird 0.60.7"
+        if ($line -match "^\s*${PackageName}\s+([0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?)") {
             $installedVersionString = $Matches[1]
             break
         }
     }
 
     if (-not $installedVersionString) {
-        Write-Log "ERROR: Could not determine installed version of package '$PackageName'."
-        return 1
+        Write-Log "Package '$PackageName' is not installed locally. Nothing to update. Exiting."
+        return 0
     }
 
     Write-Log "Installed $PackageName version: $installedVersionString"
@@ -438,8 +440,8 @@ function Invoke-NetBirdDelayedUpdate {
 
     $candidateVersionString = $null
     foreach ($line in $infoOutput) {
-        # Expect: "Latest   : 1.2.3"
-        if ($line -match "Latest\s*:\s*([0-9]+\.[0-9]+\.[0-9]+)") {
+        # Typical: "Latest   : 0.60.7"
+        if ($line -match "Latest\s*:\s*([0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?)") {
             $candidateVersionString = $Matches[1]
             break
         }
@@ -582,7 +584,7 @@ function Invoke-NetBirdGuiUpdate {
     }
 
     $releaseVersion = $null
-    if ($latestRelease.tag_name -match 'v?([0-9]+\.[0-9]+\.[0-9]+)') {
+    if ($latestRelease.tag_name -match 'v?([0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?)') {
         $releaseVersion = $Matches[1]
     }
 
