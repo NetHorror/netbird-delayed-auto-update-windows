@@ -29,14 +29,6 @@ C:\Windows\System32\netbird-delayed-auto-update-windows\netbird-delayed-update.p
 
 > Tip: keep the script in a fixed path. Scheduled Task stores the full script path.
 
-### One-off manual run (for testing)
-
-~~~powershell
-powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
-  -DelayDays 0 `
-  -MaxRandomDelaySeconds 0
-~~~
-
 ### Install the scheduled task (recommended)
 
 ~~~powershell
@@ -46,6 +38,14 @@ powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
   -MaxRandomDelaySeconds 3600 `
   -LogRetentionDays 60 `
   -StartWhenAvailable
+~~~
+
+### One-off manual run (for testing)
+
+~~~powershell
+powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
+  -DelayDays 0 `
+  -MaxRandomDelaySeconds 0
 ~~~
 
 * * *
