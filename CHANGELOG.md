@@ -1,7 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.  
-This project uses [semantic versioning](https://semver.org/) and GitHub releases as the primary source of truth.
+
+## [0.2.2] - 2025-12-13
+
+### Added
+- More robust GitHub API requests: enforced TLS 1.2 and added explicit `User-Agent`/`Accept` headers.
+- Better Windows service restart logic: automatic service name detection if `Netbird` is not found.
+
+### Changed
+- Scheduled Task now runs PowerShell with `-NoProfile` for predictable execution.
+- Stored timestamp parsing is stricter and safer (`RoundtripKind` / ISO 8601 `"o"` parsing).
+
+### Fixed
+- PowerShell 7+ compatibility issues caused by legacy `-UseBasicParsing`.
+- GUI installer handling now validates process exit code and does not update GUI state on failure.
 
 ## [0.2.1] – 2025-12-09
 
