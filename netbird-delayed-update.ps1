@@ -119,8 +119,8 @@ function Invoke-WebRequestCompat {
     )
 
     $params = @{
-        Uri     = $Uri
-        Headers = $Headers
+        Uri         = $Uri
+        Headers     = $Headers
         ErrorAction = "Stop"
     }
 
@@ -141,8 +141,8 @@ function Invoke-RestMethodCompat {
     )
 
     $params = @{
-        Uri     = $Uri
-        Headers = $Headers
+        Uri         = $Uri
+        Headers     = $Headers
         ErrorAction = "Stop"
     }
 
@@ -316,7 +316,7 @@ function Find-NetBirdService {
         } catch { }
     }
 
-    # Fallback: search by display name
+    # Fallback: search by display name / name
     try {
         $svc = Get-Service -ErrorAction Stop | Where-Object {
             $_.DisplayName -match "NetBird" -or $_.Name -match "NetBird" -or $_.Name -match "netbird"
@@ -398,8 +398,8 @@ function Update-NetBirdGuiIfNeeded {
 
         Write-JsonFile -Path $GuiStatePath -Object @{
             LastInstalledGuiVersion = $latest
-            InstalledAtUtc = (Get-Date).ToUniversalTime().ToString("o")
-            DaemonVersionAtInstall = $DaemonVersionAfterUpgrade
+            InstalledAtUtc          = (Get-Date).ToUniversalTime().ToString("o")
+            DaemonVersionAtInstall  = $DaemonVersionAfterUpgrade
         }
 
         Write-Log "GUI update: installed successfully ($latest)." "INFO"
@@ -432,7 +432,12 @@ function Save-State {
 function Parse-RoundtripUtc {
     param([Parameter(Mandatory=$true)][string]$Value)
     try {
-        return [DateTime]::ParseExact($Value, "o", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+        return [DateTime]::ParseExact(
+            $Value,
+            "o",
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind
+        )
     } catch {
         return $null
     }
@@ -445,6 +450,8 @@ function Install-NetBirdTask {
     Ensure-BaseDir
 
     $scriptPath = $PSCommandPath
+
+    # NOTE: these are PowerShell.exe arguments (not script arguments)
     $runArgs = @(
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
@@ -455,32 +462,38 @@ function Install-NetBirdTask {
         "-PackageName", "`"$PackageName`""
     )
 
-    # NOTE: switches are only included if enabled
-    if ($StartWhenAvailable) {
-        # This one affects task settings, not script args
-        # kept for clarity
-    }
-
     $psExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-
     $action = New-ScheduledTaskAction -Execute $psExe -Argument ($runArgs -join " ")
 
-    $triggerTime = [DateTime]::ParseExact($DailyTime, "HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
-    $trigger = New-ScheduledTaskTrigger -Daily -At $triggerTime.TimeOfDay
+    # Parse DailyTime (HH:mm) and build a DateTime for "today at HH:mm"
+    try {
+        $parsed = [DateTime]::ParseExact($DailyTime, "HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
+    } catch {
+        throw "Invalid -DailyTime value '$DailyTime'. Expected HH:mm (e.g. 23:59)."
+    }
+
+    # IMPORTANT: -At expects DateTime, not TimeSpan
+    $at = (Get-Date).Date.Add($parsed.TimeOfDay)
+    $trigger = New-ScheduledTaskTrigger -Daily -At $at
 
     $settings = New-ScheduledTaskSettingsSet
     if ($StartWhenAvailable) {
         $settings.StartWhenAvailable = $true
     }
 
-    if ($RunAsCurrentUser) {
-        $principal = New-ScheduledTaskPrincipal -UserId "$env:UserDomain\$env:UserName" -LogonType S4U -RunLevel Highest
-        Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
-    } else {
-        Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -User "SYSTEM" -RunLevel Highest -Force | Out-Null
-    }
+    try {
+        if ($RunAsCurrentUser) {
+            $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Highest
+            Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force -ErrorAction Stop | Out-Null
+        } else {
+            Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -User "SYSTEM" -RunLevel Highest -Force -ErrorAction Stop | Out-Null
+        }
 
-    Write-Log "Scheduled Task installed/updated: $TaskName (daily at $DailyTime)." "INFO"
+        Write-Log "Scheduled Task installed/updated: $TaskName (daily at $DailyTime)." "INFO"
+    } catch {
+        Write-Log "Failed to install/update Scheduled Task '$TaskName': $($_.Exception.Message)" "ERROR"
+        throw
+    }
 }
 
 function Uninstall-NetBirdTask {
