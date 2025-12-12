@@ -29,6 +29,14 @@ C:\Windows\System32\netbird-delayed-auto-update-windows\netbird-delayed-update.p
 
 > Tip: keep the script in a fixed path. Scheduled Task stores the full script path.
 
+### One-off manual run (for testing)
+
+~~~powershell
+powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
+  -DelayDays 0 `
+  -MaxRandomDelaySeconds 0
+~~~
+
 ### Install the scheduled task (recommended)
 
 ~~~powershell
@@ -38,14 +46,6 @@ powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
   -MaxRandomDelaySeconds 3600 `
   -LogRetentionDays 60 `
   -StartWhenAvailable
-~~~
-
-### One-off manual run (for testing)
-
-~~~powershell
-powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
-  -DelayDays 0 `
-  -MaxRandomDelaySeconds 0
 ~~~
 
 * * *
@@ -69,9 +69,11 @@ powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
 - Log retention
   - Logs to date-stamped files under `C:\ProgramData\NetBirdDelayedUpdate`.
   - Old log files are automatically deleted based on `LogRetentionDays` (default: 60 days).
-- System-friendly
-  - Uses the existing NetBird Chocolatey package.
-  - Works well as a scheduled task (SYSTEM or current user with highest privileges).
+- Reliability improvements (0.2.2)
+  - Scheduled Task uses `-NoProfile` for predictable execution.
+  - GitHub API calls include a User-Agent header and enforce TLS 1.2 for compatibility.
+  - GUI installer exit code is validated; GUI state is not updated on failure.
+  - More robust parsing of stored timestamps and better service name detection.
 
 * * *
 
@@ -116,6 +118,83 @@ Verify:
 ~~~cmd
 choco -v
 ~~~
+
+* * *
+
+## Parameters
+
+The script supports three modes:
+
+- **Run mode (default)**: run the delayed update check and (if allowed) upgrade NetBird via Chocolatey.
+- **Install mode**: create/update a Scheduled Task that runs the script daily.
+- **Uninstall mode**: remove the Scheduled Task (optionally delete logs/state).
+
+### Modes
+
+- `-Install` (`-i`)
+  - Installs or updates the Scheduled Task.
+  - Example:
+    ~~~powershell
+    powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 -Install
+    ~~~
+
+- `-Uninstall` (`-u`)
+  - Removes the Scheduled Task.
+  - Example:
+    ~~~powershell
+    powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 -Uninstall
+    ~~~
+
+- `-RemoveState`
+  - Only meaningful with `-Uninstall`.
+  - Also deletes `C:\ProgramData\NetBirdDelayedUpdate` (logs + state).
+  - Example:
+    ~~~powershell
+    powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 -Uninstall -RemoveState
+    ~~~
+
+### Scheduling (only used with `-Install`)
+
+- `-DailyTime <HH:mm>`
+  - Time of day for the Scheduled Task trigger (24h format).
+  - Default: `04:00`
+
+- `-TaskName <string>`
+  - Scheduled Task name.
+  - Default: `NetBird Delayed Choco Update`
+
+- `-StartWhenAvailable` (`-r`)
+  - If a scheduled run was missed (PC was off), run ASAP after boot.
+
+- `-RunAsCurrentUser`
+  - If set, the task will run as the current user with highest privileges.
+  - If not set, the task runs as **SYSTEM** (recommended).
+
+> Note: values you pass during `-Install` are embedded into the task command line.
+> To change them later, run `-Install` again with new values.
+
+### Update logic (Run mode and also embedded into task on Install)
+
+- `-DelayDays <int>`
+  - Minimum “aging” time (days) a new Chocolatey version must be visible before upgrade is allowed.
+  - Default: `10`
+  - `0` disables delay (upgrade immediately).
+
+- `-MaxRandomDelaySeconds <int>`
+  - Adds a random sleep before the version check to reduce simultaneous upgrades across machines.
+  - Default: `3600` (1 hour)
+  - `0` disables random delay.
+
+- `-PackageName <string>`
+  - Chocolatey package name to manage.
+  - Default: `netbird`
+
+### Logs / retention
+
+- `-LogRetentionDays <int>`
+  - How many days to keep log files under `C:\ProgramData\NetBirdDelayedUpdate`.
+  - Default: `60`
+  - `0` (or negative) disables log cleanup.
 
 * * *
 
@@ -200,16 +279,12 @@ GUI installer is not invoked if:
 
 On each run (before doing anything else) it:
 1. Checks the latest release of this repo via GitHub API.
-2. Compares its tag (e.g. `0.2.1`) with the local `$ScriptVersion`.
+2. Compares its tag (e.g. `0.2.2`) with the local `$ScriptVersion`.
 3. If remote version is newer:
    - tries `git pull --ff-only` when inside a git checkout, otherwise
    - downloads `netbird-delayed-update.ps1` from the tagged version and overwrites the local script.
 
 The updated script is used on the next run.
-
-To disable self-update, you can:
-- set `$ScriptRepo = ""` in the script, or
-- comment out the self-update call near the bottom.
 
 * * *
 
