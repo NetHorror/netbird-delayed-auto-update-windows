@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - PowerShell 7+ compatibility issues caused by legacy `-UseBasicParsing`.
 - GUI installer handling now validates process exit code and does not update GUI state on failure.
+- Scheduled Task installation failed when using -DailyTime; New-ScheduledTaskTrigger -At now receives a DateTime (not TimeSpan).
+- Install mode no longer logs success when task registration fails (errors are now surfaced).
 
 ## [0.2.1] – 2025-12-09
 
