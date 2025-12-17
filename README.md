@@ -1,7 +1,6 @@
 # NetBird Delayed Auto-Update for Windows (Chocolatey)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE) ![Platform: Windows](https://img.shields.io/badge/platform-Windows-informational) ![PowerShell](https://img.shields.io/badge/PowerShell-5%2B-brightgreen) ![Package manager: Chocolatey](https://img.shields.io/badge/package%20manager-Chocolatey-8A4513)
-# NetBird Delayed Auto-Update for Windows (Chocolatey)
 
 PowerShell script that implements delayed / staged updates for the NetBird Windows client installed via Chocolatey.
 Instead of upgrading to the latest Chocolatey version immediately, new versions must “age” for a configurable number of days before they are allowed to be installed. Short-lived or bad releases that get quickly replaced will never reach your machines.
