@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["*"]
+  pull_request:
+
+jobs:
+  analyze:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        shell: pwsh
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw ./netbird-delayed-update.ps1), [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error::$($_.Message) at line $($_.Token.StartLine)" }
+            throw "Syntax errors found in netbird-delayed-update.ps1"
+          }
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path ./netbird-delayed-update.ps1 -Severity Warning, Error
+          $results | Format-Table -AutoSize
+          $blocking = $results | Where-Object { $_.Severity -eq 'Error' }
+          if ($blocking) { throw "PSScriptAnalyzer found $($blocking.Count) error-level issue(s)" }
+
+  smoke-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run once (NetBird not installed -> should exit cleanly)
+        shell: pwsh
+        run: |
+          ./netbird-delayed-update.ps1 -MaxRandomDelaySeconds 0
+          if ($LASTEXITCODE -ne 0) { throw "Run mode did not exit 0 (exit code $LASTEXITCODE)" }
+
+      - name: Install scheduled task
+        shell: pwsh
+        run: ./netbird-delayed-update.ps1 -Install -DelayDays 5 -MaxRandomDelaySeconds 0 -TaskName "CI Test Task"
+
+      - name: Verify scheduled task was created
+        shell: pwsh
+        run: |
+          $task = Get-ScheduledTask -TaskName "CI Test Task" -ErrorAction Stop
+          if (-not $task) { throw "Scheduled task was not created" }
+
+      - name: Uninstall scheduled task
+        shell: pwsh
+        run: ./netbird-delayed-update.ps1 -Uninstall -RemoveState -TaskName "CI Test Task"
+
+      - name: Verify scheduled task was removed
+        shell: pwsh
+        run: |
+          $task = Get-ScheduledTask -TaskName "CI Test Task" -ErrorAction SilentlyContinue
+          if ($task) { throw "Scheduled task still exists after uninstall" }
+
+  tag-matches-version:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $content = Get-Content -Raw ./netbird-delayed-update.ps1
+          if ($content -notmatch [regex]::Escape("`$ScriptVersion = `"$tag`"")) {
+            throw "Tag '$tag' does not match `$ScriptVersion in netbird-delayed-update.ps1"
+          }

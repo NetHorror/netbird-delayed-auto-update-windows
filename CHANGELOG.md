@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.  
 
+## [0.2.3] - 2026-08-12
+
+### Added
+- CI workflow (GitHub Actions): syntax check, PSScriptAnalyzer, an install/uninstall Scheduled Task smoke test, and a check that release tags match `$ScriptVersion`.
+- `README.md` cross-links to the Linux and macOS sibling projects (already present here; added on the other two repos).
+
+### Changed
+- Self-update is now safer: the downloaded script is sanity-checked (must declare the expected `$ScriptVersion`) before being applied, the previous script is backed up (`.bak-<timestamp>`) before being overwritten, and the temporary download now lives in the same directory as the target script so the final replace is an atomic rename instead of a cross-volume copy.
+
 ## [0.2.2] - 2025-12-13
 
 ### Added

@@ -1,4 +1,4 @@
-# Version: 0.2.2
+# Version: 0.2.3
 
 <#
 .SYNOPSIS
@@ -67,7 +67,7 @@ param(
 # -----------------------------
 # Constants / Paths
 # -----------------------------
-$ScriptVersion = "0.2.2"
+$ScriptVersion = "0.2.3"
 $BaseDir = Join-Path $env:ProgramData "NetBirdDelayedUpdate"
 $StatePath = Join-Path $BaseDir "state.json"
 $GuiStatePath = Join-Path $BaseDir "gui-state.json"
@@ -246,12 +246,30 @@ function Try-SelfUpdate {
             }
         }
 
-        # Fallback: download script from the tagged version
+        # Fallback: download script from the tagged version.
+        # The temp file MUST live in the same directory as the target so the
+        # final Move-Item is an atomic rename (using $env:TEMP can land on a
+        # different volume, turning the move into a non-atomic copy+delete
+        # that can leave a truncated script behind if interrupted).
         $rawUrl = "https://raw.githubusercontent.com/$ScriptRepo/$tag/$ScriptName"
-        $tmp = Join-Path $env:TEMP ("{0}-{1}.tmp" -f $ScriptName, [Guid]::NewGuid().ToString("N"))
+        $scriptDir = Split-Path -Parent $PSCommandPath
+        $tmp = Join-Path $scriptDir (".{0}.new-{1}.tmp" -f $ScriptName, [Guid]::NewGuid().ToString("N"))
         Invoke-WebRequestCompat -Uri $rawUrl -Headers $headers -OutFile $tmp | Out-Null
+
+        # Sanity check: the downloaded file must actually declare the version
+        # we asked for, so a truncated/wrong response doesn't get installed silently.
+        $downloadedContent = Get-Content -Path $tmp -Raw -ErrorAction Stop
+        if ($downloadedContent -notmatch [regex]::Escape("`$ScriptVersion = `"$remoteVersion`"")) {
+            Write-Log "Self-update: sanity check failed (ScriptVersion mismatch in downloaded file); aborting." "WARN"
+            Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
+            return
+        }
+
+        $backup = "$PSCommandPath.bak-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss")
+        Copy-Item -Path $PSCommandPath -Destination $backup -Force -ErrorAction SilentlyContinue
+
         Move-Item -Path $tmp -Destination $PSCommandPath -Force
-        Write-Log "Self-update: script updated from GitHub ($tag)." "INFO"
+        Write-Log "Self-update: script updated from GitHub ($tag). Backup: $backup" "INFO"
     } catch {
         Write-Log "Self-update failed: $($_.Exception.Message)" "WARN"
     }
