@@ -1,4 +1,4 @@
-# Version: 0.2.3
+# Version: 0.3.0
 
 <#
 .SYNOPSIS
@@ -10,7 +10,8 @@
 
     Optional features:
     - GUI update via official installer feed (pkgs.netbird.io)
-    - Script self-update via GitHub releases of this repository
+    - Script self-update via GitHub release assets of this repository (SHA256-verified)
+    - First-time NetBird client installation (-InstallClient or interactive prompt)
     - Scheduled Task installer/uninstaller
     - Log retention
 
@@ -61,13 +62,21 @@ param(
 
     # Run task as current user instead of SYSTEM
     [Parameter(Mandatory = $false)]
-    [switch]$RunAsCurrentUser
+    [switch]$RunAsCurrentUser,
+
+    # Install the NetBird client if it is missing, without asking
+    [Parameter(Mandatory = $false)]
+    [switch]$InstallClient,
+
+    # Disable script self-update from GitHub releases
+    [Parameter(Mandatory = $false)]
+    [switch]$NoSelfUpdate
 )
 
 # -----------------------------
 # Constants / Paths
 # -----------------------------
-$ScriptVersion = "0.2.3"
+$ScriptVersion = "0.3.0"
 $BaseDir = Join-Path $env:ProgramData "NetBirdDelayedUpdate"
 $StatePath = Join-Path $BaseDir "state.json"
 $GuiStatePath = Join-Path $BaseDir "gui-state.json"
@@ -214,7 +223,12 @@ function Compare-SemVer {
 # Self-update (GitHub releases)
 # -----------------------------
 function Try-SelfUpdate {
+    if ($NoSelfUpdate) {
+        Write-Log "Self-update: disabled by -NoSelfUpdate." "INFO"
+        return
+    }
     if ([string]::IsNullOrWhiteSpace($ScriptRepo)) { return }
+    if (-not $PSCommandPath) { return }
 
     Set-Tls12IfPossible
 
@@ -222,10 +236,14 @@ function Try-SelfUpdate {
         $headers = Get-GitHubHeaders
         $api = "https://api.github.com/repos/$ScriptRepo/releases/latest"
         $rel = Invoke-RestMethodCompat -Uri $api -Headers $headers
-        $tag = ($rel.tag_name -as [string]).Trim()
+        $tag = ([string]$rel.tag_name).Trim()
         if ([string]::IsNullOrWhiteSpace($tag)) { return }
 
-        $remoteVersion = $tag.TrimStart("v")
+        $remoteVersion = $tag -replace '^v', ''
+        if ($remoteVersion -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Log "Self-update: latest release tag '$tag' is not a plain X.Y.Z version; skipping." "WARN"
+            return
+        }
         $cmp = Compare-SemVer -A $remoteVersion -B $ScriptVersion
         if ($cmp -le 0) {
             Write-Log "Self-update: already on latest version ($ScriptVersion)." "INFO"
@@ -234,42 +252,73 @@ function Try-SelfUpdate {
 
         Write-Log "Self-update: remote version is newer ($remoteVersion > $ScriptVersion). Attempting update..." "INFO"
 
-        # If inside a git repo, prefer git pull.
-        $gitDir = Join-Path (Split-Path -Parent $PSCommandPath) ".git"
-        if (Test-Path $gitDir) {
-            try {
-                git pull --ff-only | Out-Null
-                Write-Log "Self-update: updated via git pull." "INFO"
-                return
-            } catch {
-                Write-Log "Self-update: git pull failed: $($_.Exception.Message). Falling back to raw download." "WARN"
-            }
-        }
-
-        # Fallback: download script from the tagged version.
-        # The temp file MUST live in the same directory as the target so the
-        # final Move-Item is an atomic rename (using $env:TEMP can land on a
-        # different volume, turning the move into a non-atomic copy+delete
-        # that can leave a truncated script behind if interrupted).
-        $rawUrl = "https://raw.githubusercontent.com/$ScriptRepo/$tag/$ScriptName"
-        $scriptDir = Split-Path -Parent $PSCommandPath
-        $tmp = Join-Path $scriptDir (".{0}.new-{1}.tmp" -f $ScriptName, [Guid]::NewGuid().ToString("N"))
-        Invoke-WebRequestCompat -Uri $rawUrl -Headers $headers -OutFile $tmp | Out-Null
-
-        # Sanity check: the downloaded file must actually declare the version
-        # we asked for, so a truncated/wrong response doesn't get installed silently.
-        $downloadedContent = Get-Content -Path $tmp -Raw -ErrorAction Stop
-        if ($downloadedContent -notmatch [regex]::Escape("`$ScriptVersion = `"$remoteVersion`"")) {
-            Write-Log "Self-update: sanity check failed (ScriptVersion mismatch in downloaded file); aborting." "WARN"
-            Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
+        # Only release assets are used: the script itself and SHA256SUMS.
+        $scriptAsset = @($rel.assets) | Where-Object { $_ -and $_.name -eq $ScriptName } | Select-Object -First 1
+        $sumsAsset   = @($rel.assets) | Where-Object { $_ -and $_.name -eq "SHA256SUMS" } | Select-Object -First 1
+        if (-not $scriptAsset -or -not $scriptAsset.browser_download_url -or
+            -not $sumsAsset -or -not $sumsAsset.browser_download_url) {
+            Write-Log "Self-update: release $tag has no '$ScriptName' and/or 'SHA256SUMS' asset; nothing changed." "WARN"
             return
         }
 
-        $backup = "$PSCommandPath.bak-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss")
-        Copy-Item -Path $PSCommandPath -Destination $backup -Force -ErrorAction SilentlyContinue
+        # Temp files MUST live in the same directory as the target so the
+        # final Move-Item is an atomic rename (using $env:TEMP can land on a
+        # different volume, turning the move into a non-atomic copy+delete
+        # that can leave a truncated script behind if interrupted).
+        $target = $PSCommandPath
+        $scriptDir = Split-Path -Parent $target
+        $guid = [Guid]::NewGuid().ToString("N")
+        $tmpScript = Join-Path $scriptDir (".{0}.new-{1}.tmp" -f $ScriptName, $guid)
+        $tmpSums   = Join-Path $scriptDir (".SHA256SUMS.new-{0}.tmp" -f $guid)
+        $dlHeaders = @{ "User-Agent" = "netbird-delayed-update/$ScriptVersion" }
 
-        Move-Item -Path $tmp -Destination $PSCommandPath -Force
-        Write-Log "Self-update: script updated from GitHub ($tag). Backup: $backup" "INFO"
+        try {
+            Invoke-WebRequestCompat -Uri ([string]$scriptAsset.browser_download_url) -Headers $dlHeaders -OutFile $tmpScript | Out-Null
+            Invoke-WebRequestCompat -Uri ([string]$sumsAsset.browser_download_url) -Headers $dlHeaders -OutFile $tmpSums | Out-Null
+
+            # Find the expected hash for the exact file name in SHA256SUMS
+            # (format: "<hex>  <name>" or "<hex> *<name>").
+            $expected = $null
+            foreach ($line in (Get-Content -Path $tmpSums -ErrorAction Stop)) {
+                $m = [regex]::Match([string]$line, '^\s*([0-9A-Fa-f]{64})\s+\*?(.+?)\s*$')
+                if ($m.Success -and $m.Groups[2].Value -ceq $ScriptName) {
+                    $expected = $m.Groups[1].Value
+                    break
+                }
+            }
+            if (-not $expected) {
+                Write-Log "Self-update: SHA256SUMS has no entry for '$ScriptName'; nothing changed." "ERROR"
+                return
+            }
+
+            $actual = (Get-FileHash -Path $tmpScript -Algorithm SHA256 -ErrorAction Stop).Hash
+            if (-not [string]::Equals($actual, $expected, [StringComparison]::OrdinalIgnoreCase)) {
+                Write-Log "Self-update: SHA256 mismatch for '$ScriptName' (expected $expected, got $actual); nothing changed." "ERROR"
+                return
+            }
+
+            # The downloaded file must declare the version from the release tag.
+            $downloadedContent = Get-Content -Path $tmpScript -Raw -ErrorAction Stop
+            if ($downloadedContent -notmatch [regex]::Escape("`$ScriptVersion = `"$remoteVersion`"")) {
+                Write-Log "Self-update: downloaded file does not declare `$ScriptVersion = `"$remoteVersion`"; nothing changed." "ERROR"
+                return
+            }
+
+            # Keep the target's DACL: copy it onto the new file before the rename.
+            $acl = Get-Acl -Path $target -ErrorAction Stop
+            $newAcl = New-Object System.Security.AccessControl.FileSecurity
+            $newAcl.SetSecurityDescriptorSddlForm($acl.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::Access), [System.Security.AccessControl.AccessControlSections]::Access)
+            Set-Acl -Path $tmpScript -AclObject $newAcl -ErrorAction Stop
+
+            $backup = "{0}.bak-{1}" -f $target, (Get-Date -Format "yyyyMMdd-HHmmss")
+            Copy-Item -Path $target -Destination $backup -Force -ErrorAction Stop
+
+            Move-Item -Path $tmpScript -Destination $target -Force -ErrorAction Stop
+            Write-Log "Self-update: script updated to $remoteVersion from release asset (SHA256 verified). Backup: $backup. The new version is used on the next run." "INFO"
+        } finally {
+            Remove-Item -Path $tmpScript -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $tmpSums -Force -ErrorAction SilentlyContinue
+        }
     } catch {
         Write-Log "Self-update failed: $($_.Exception.Message)" "WARN"
     }
@@ -368,6 +417,111 @@ function Restart-NetBirdServiceIfPresent {
     } catch {
         Write-Log "Service restart failed: $($_.Exception.Message)" "WARN"
     }
+}
+
+# -----------------------------
+# Client detection / first install
+# -----------------------------
+function Test-ChocoAvailable {
+    return [bool](Get-Command choco -ErrorAction SilentlyContinue)
+}
+
+function Get-NetBirdExePath {
+    $pf = $env:ProgramW6432
+    if ([string]::IsNullOrWhiteSpace($pf)) { $pf = $env:ProgramFiles }
+    return Join-Path $pf "NetBird\netbird.exe"
+}
+
+function Test-NetBirdClientPresent {
+    if (Find-NetBirdService) { return $true }
+    if (Test-Path -LiteralPath (Get-NetBirdExePath)) { return $true }
+    if (Get-ChocoLocalVersion -Pkg $PackageName) { return $true }
+    return $false
+}
+
+function Test-InteractiveSession {
+    if (-not [Environment]::UserInteractive) { return $false }
+    try {
+        if ([System.Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) { return $false }
+    } catch { }
+    try {
+        if ([Console]::IsInputRedirected) { return $false }
+    } catch { }
+    # powershell.exe / pwsh started with -NonInteractive cannot prompt.
+    if ([Environment]::GetCommandLineArgs() | Where-Object { $_ -match '^[-/]noni' }) { return $false }
+    return $true
+}
+
+function Install-NetBirdClient {
+    Write-Log "Client install: first installation always installs the CURRENT latest NetBird version (DelayDays applies only to later updates)." "INFO"
+
+    if (Test-ChocoAvailable) {
+        try {
+            Write-Log "Client install: installing Chocolatey package '$PackageName'..." "INFO"
+            & choco install $PackageName -y --no-progress
+            $code = $LASTEXITCODE
+            if ($code -ne 0) {
+                Write-Log "Client install: choco install failed with exit code $code." "ERROR"
+                return $false
+            }
+            Write-Log "Client install: installed via Chocolatey ($(Get-ChocoLocalVersion -Pkg $PackageName))." "INFO"
+            return $true
+        } catch {
+            Write-Log "Client install: choco install failed: $($_.Exception.Message)" "ERROR"
+            return $false
+        }
+    }
+
+    Write-Log "Client install: Chocolatey not found; using the official installer. Delayed daemon updates will NOT work for this installation (they are done only via Chocolatey)." "WARN"
+
+    Set-Tls12IfPossible
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("netbird-install-{0}.exe" -f [Guid]::NewGuid().ToString("N"))
+    try {
+        Invoke-WebRequestCompat -Uri "https://pkgs.netbird.io/windows/x64" -Headers $null -OutFile $tmp | Out-Null
+
+        $sig = Get-AuthenticodeSignature -FilePath $tmp
+        $signerOk = $sig.SignerCertificate -and ($sig.SignerCertificate.Subject -like "*CN=NetBird GmbH*")
+        if ($sig.Status -ne "Valid" -or -not $signerOk) {
+            Write-Log "Client install: installer signature check failed (status: $($sig.Status)); not installing." "ERROR"
+            return $false
+        }
+
+        $p = Start-Process -FilePath $tmp -ArgumentList "/S" -Wait -PassThru
+        if ($p.ExitCode -ne 0) {
+            Write-Log "Client install: installer returned exit code $($p.ExitCode)." "ERROR"
+            return $false
+        }
+        Write-Log "Client install: NetBird installed via the official installer." "INFO"
+        return $true
+    } catch {
+        Write-Log "Client install failed: $($_.Exception.Message)" "ERROR"
+        return $false
+    } finally {
+        Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Returns $true when the client is present (or was just installed).
+function Confirm-NetBirdClient {
+    if (Test-NetBirdClientPresent) { return $true }
+
+    if ($InstallClient) {
+        Write-Log "NetBird client not found; installing (-InstallClient)." "INFO"
+        return (Install-NetBirdClient)
+    }
+
+    if (Test-InteractiveSession) {
+        # ASCII only: Windows PowerShell 5.1 reads BOM-less files as ANSI.
+        $answer = Read-Host "NetBird not found. Install now? [Y/n]"
+        if ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim() -match '^(y|yes)$') {
+            return (Install-NetBirdClient)
+        }
+        Write-Log "NetBird client not found; installation declined by user." "WARN"
+        return $false
+    }
+
+    Write-Log "NetBird client not found (service, '$(Get-NetBirdExePath)' or Chocolatey package '$PackageName'); not installing in non-interactive mode. Run with -InstallClient to install." "WARN"
+    return $false
 }
 
 # -----------------------------
@@ -495,6 +649,7 @@ function Install-NetBirdTask {
         "-LogRetentionDays", $LogRetentionDays,
         "-PackageName", "`"$PackageName`""
     )
+    if ($NoSelfUpdate) { $runArgs += "-NoSelfUpdate" }
 
     $psExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
     $action = New-ScheduledTaskAction -Execute $psExe -Argument ($runArgs -join " ")
@@ -558,6 +713,9 @@ Cleanup-OldLogs
 
 if ($Install) {
     Write-Log "Mode: Install Scheduled Task" "INFO"
+    if ($InstallClient -and -not (Confirm-NetBirdClient)) {
+        Write-Log "NetBird client installation failed; the Scheduled Task is installed anyway." "WARN"
+    }
     Install-NetBirdTask
     exit 0
 }
@@ -572,6 +730,10 @@ Write-Log "Mode: Run" "INFO"
 
 Try-SelfUpdate
 
+if (-not (Confirm-NetBirdClient)) {
+    exit 0
+}
+
 # Optional randomized delay
 if ($MaxRandomDelaySeconds -gt 0) {
     $sleep = Get-Random -Minimum 0 -Maximum ($MaxRandomDelaySeconds + 1)
@@ -583,7 +745,7 @@ if ($MaxRandomDelaySeconds -gt 0) {
 
 $installed = Get-ChocoLocalVersion -Pkg $PackageName
 if (-not $installed) {
-    Write-Log "Package '$PackageName' is not installed via Chocolatey; exiting." "INFO"
+    Write-Log "Package '$PackageName' is not installed via Chocolatey; delayed daemon updates work only for Chocolatey installs. Exiting." "INFO"
     exit 0
 }
 

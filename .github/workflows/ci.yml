@@ -12,14 +12,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Syntax check
+      - name: Parse check (PowerShell 7)
         shell: pwsh
         run: |
-          $errors = $null
-          [void][System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw ./netbird-delayed-update.ps1), [ref]$errors)
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./netbird-delayed-update.ps1).Path, [ref]$tokens, [ref]$errors)
           if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Host "::error::$($_.Message) at line $($_.Token.StartLine)" }
-            throw "Syntax errors found in netbird-delayed-update.ps1"
+            $errors | ForEach-Object { Write-Host "::error::$($_.Message) at line $($_.Extent.StartLineNumber)" }
+            throw "Parse errors found in netbird-delayed-update.ps1"
+          }
+
+      - name: Parse check (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./netbird-delayed-update.ps1).Path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error::$($_.Message) at line $($_.Extent.StartLineNumber)" }
+            throw "Parse errors found in netbird-delayed-update.ps1"
           }
 
       - name: Install PSScriptAnalyzer
@@ -39,15 +49,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run once (NetBird not installed -> should exit cleanly)
+      # No real NetBird installation and no self-update in CI: the run must
+      # stay non-interactive (no -InstallClient) and use -NoSelfUpdate.
+      - name: Run once (NetBird not installed -> should warn and exit cleanly)
         shell: pwsh
         run: |
-          ./netbird-delayed-update.ps1 -MaxRandomDelaySeconds 0
+          pwsh -NoProfile -NonInteractive -File ./netbird-delayed-update.ps1 -MaxRandomDelaySeconds 0 -NoSelfUpdate
           if ($LASTEXITCODE -ne 0) { throw "Run mode did not exit 0 (exit code $LASTEXITCODE)" }
 
       - name: Install scheduled task
         shell: pwsh
-        run: ./netbird-delayed-update.ps1 -Install -DelayDays 5 -MaxRandomDelaySeconds 0 -TaskName "CI Test Task"
+        run: pwsh -NoProfile -NonInteractive -File ./netbird-delayed-update.ps1 -Install -DelayDays 5 -MaxRandomDelaySeconds 0 -NoSelfUpdate -TaskName "CI Test Task"
 
       - name: Verify scheduled task was created
         shell: pwsh
@@ -57,7 +69,7 @@ jobs:
 
       - name: Uninstall scheduled task
         shell: pwsh
-        run: ./netbird-delayed-update.ps1 -Uninstall -RemoveState -TaskName "CI Test Task"
+        run: pwsh -NoProfile -NonInteractive -File ./netbird-delayed-update.ps1 -Uninstall -RemoveState -TaskName "CI Test Task"
 
       - name: Verify scheduled task was removed
         shell: pwsh
