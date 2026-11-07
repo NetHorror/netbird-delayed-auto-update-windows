@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.  
 
+## [0.3.0] - 2026-11-08
+
+### Added
+- NetBird client detection (service, `C:\Program Files\NetBird\netbird.exe`, Chocolatey package) and first-time installation:
+  `-InstallClient` installs without asking; interactive sessions are asked `[Y/n]`; non-interactive runs (Scheduled Task / SYSTEM) log a WARN and exit `0`.
+  Installation uses `choco install` when Chocolatey is present, otherwise the official installer after an Authenticode check (`Valid`, `CN=NetBird GmbH`).
+  The first installation installs the current latest version; the delay applies only to later updates, and only for Chocolatey installs.
+- `-NoSelfUpdate` disables script self-update (also embedded into the Scheduled Task when passed with `-Install`).
+- CI: parser check (`Parser::ParseFile`) on PowerShell 7 and Windows PowerShell 5.1; smoke tests run non-interactively with `-NoSelfUpdate`.
+
+### Changed
+- Self-update now uses only the release assets `netbird-delayed-update.ps1` and `SHA256SUMS`: the SHA256 hash and the declared `$ScriptVersion` must match before the script is replaced (backup + atomic rename, target ACL preserved). Tags must be `X.Y.Z` / `vX.Y.Z`.
+
+### Removed
+- `git pull` based self-update.
+
 ## [0.2.3] - 2026-08-12
 
 ### Added

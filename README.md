@@ -9,24 +9,35 @@ Instead of upgrading to the latest Chocolatey version immediately, new versions 
 
 ## Quick start
 
-### Option A: git clone (recommended)
+### Install in one command (recommended)
 
-Clone the repository:
+Run PowerShell **as Administrator**. This downloads the script and `SHA256SUMS` from a release,
+verifies the SHA256 hash, installs NetBird if it is missing (`-InstallClient`) and registers the
+daily Scheduled Task:
+
+~~~powershell
+$VER = "0.3.0"; $dir = "$env:ProgramData\NetBirdDelayedUpdate\bin"; $base = "https://github.com/NetHorror/netbird-delayed-auto-update-windows/releases/download/$VER"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
+New-Item -ItemType Directory -Force $dir | Out-Null
+Invoke-WebRequest "$base/netbird-delayed-update.ps1" -OutFile "$dir\netbird-delayed-update.ps1" -UseBasicParsing
+Invoke-WebRequest "$base/SHA256SUMS" -OutFile "$dir\SHA256SUMS" -UseBasicParsing
+$expected = ((Get-Content "$dir\SHA256SUMS") -match '\snetbird-delayed-update\.ps1$' -split '\s+')[0]
+if ((Get-FileHash "$dir\netbird-delayed-update.ps1" -Algorithm SHA256).Hash -ne $expected) { throw "SHA256 mismatch" }
+powershell -ExecutionPolicy Bypass -File "$dir\netbird-delayed-update.ps1" -Install -InstallClient -StartWhenAvailable
+~~~
+
+> `-UseBasicParsing` is needed on Windows PowerShell 5.1 and ignored by PowerShell 7.
+> Keep the script in a fixed path: the Scheduled Task stores the full script path.
+
+### Alternative: git clone
 
 ~~~bash
 git clone https://github.com/NetHorror/netbird-delayed-auto-update-windows.git
 cd netbird-delayed-auto-update-windows
 ~~~
 
-### Option B: download a single file
-
-Download `netbird-delayed-update.ps1` from this repository and place it in a stable path, for example:
-
-~~~text
-C:\Windows\System32\netbird-delayed-auto-update-windows\netbird-delayed-update.ps1
-~~~
-
-> Tip: keep the script in a fixed path. Scheduled Task stores the full script path.
+The script no longer runs `git pull`; a clone is updated by self-update the same way as a single
+downloaded file (see *Script self-update*). Use `-NoSelfUpdate` if you manage the checkout yourself.
 
 ### One-off manual run (for testing)
 
@@ -62,9 +73,12 @@ powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
   - Installs it silently (`/S`).
   - Tracks last installed GUI version in `gui-state.json` to avoid re-installing the same version.
   - GUI is only updated when the daemon was actually upgraded during the current run.
+- NetBird client installation
+  - If NetBird is missing, asks in an interactive session (or installs right away with `-InstallClient`).
+  - Uses `choco install netbird` when Chocolatey is present, otherwise the signed official installer.
 - Script self-update
   - Compares the local `$ScriptVersion` with the latest GitHub release tag of this repo.
-  - Uses `git pull` when inside a git repo, otherwise downloads the script from the tagged version on GitHub.
+  - Downloads the script from the release assets and verifies it against `SHA256SUMS` (disable with `-NoSelfUpdate`).
 - Log retention
   - Logs to date-stamped files under `C:\ProgramData\NetBirdDelayedUpdate`.
   - Old log files are automatically deleted based on `LogRetentionDays` (default: 60 days).
@@ -80,7 +94,11 @@ powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
 
 - Windows with PowerShell (Windows PowerShell 5.1 or PowerShell 7+).
 - [Chocolatey](https://chocolatey.org) installed.
-- NetBird installed via Chocolatey (default package name: `netbird`).
+- NetBird installed via Chocolatey (default package name: `netbird`) — or let the script install it (`-InstallClient`).
+
+> **Delayed daemon updates work only for Chocolatey installs.** If Chocolatey is not present,
+> `-InstallClient` falls back to the official installer from `pkgs.netbird.io`; NetBird will be
+> installed, but the script cannot apply delayed updates to it later (they are done only via `choco`).
 
 * * *
 
@@ -151,6 +169,22 @@ The script supports three modes:
     ~~~powershell
     powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 -Uninstall -RemoveState
     ~~~
+
+### Client installation / self-update
+
+- `-InstallClient`
+  - If NetBird is not found (service `netbird`, `C:\Program Files\NetBird\netbird.exe` or the Chocolatey package),
+    install it without asking. Works in Run mode and together with `-Install`.
+  - With Chocolatey: `choco install netbird -y --no-progress`. Without it: the official installer
+    `https://pkgs.netbird.io/windows/x64`, run with `/S` only if its Authenticode signature is `Valid`
+    and issued to `CN=NetBird GmbH`.
+  - **The first installation installs the current latest NetBird version** — `DelayDays` applies only to later updates.
+  - Without `-InstallClient`: an interactive session asks `Install now? [Y/n]`; a non-interactive run
+    (Scheduled Task, SYSTEM, `-NonInteractive`, redirected input) logs a WARN and exits with code `0`.
+
+- `-NoSelfUpdate`
+  - Disables the script self-update. Self-update is enabled by default.
+  - When passed with `-Install`, it is embedded into the Scheduled Task command line.
 
 ### Scheduling (only used with `-Install`)
 
@@ -256,8 +290,9 @@ On each run:
    - it computes how long it has been “in the feed” based on `FirstSeenUtc`;
    - clamps negative values to `0` (clock skew safety);
    - if `ageDays >= DelayDays`, it runs:
-     - `choco upgrade netbird -y --no-progress`
-5. If NetBird is not installed locally, the script logs this and exits with code `0`.
+     - `choco upgrade netbird --version <candidate> -y --no-progress`
+5. If NetBird is not installed at all, see `-InstallClient` (non-interactive runs log a WARN and exit with code `0`).
+   If it is installed but not via Chocolatey, the script logs this and exits with code `0`.
 
 ### NetBird GUI auto-update
 
@@ -276,14 +311,22 @@ GUI installer is not invoked if:
 
 ### Script self-update
 
-On each run (before doing anything else) it:
-1. Checks the latest release of this repo via GitHub API.
-2. Compares its tag (e.g. `0.2.2`) with the local `$ScriptVersion`.
-3. If remote version is newer:
-   - tries `git pull --ff-only` when inside a git checkout, otherwise
-   - downloads `netbird-delayed-update.ps1` from the tagged version and overwrites the local script.
+On each run (before doing anything else, unless `-NoSelfUpdate` is set) it:
+1. Reads `tag_name` of the latest release of this repo via the GitHub API
+   (`X.Y.Z` or `vX.Y.Z`; anything else is ignored).
+2. Continues only if that version is newer than the local `$ScriptVersion`.
+3. Takes the `netbird-delayed-update.ps1` and `SHA256SUMS` release assets (if either is missing — logs and changes nothing)
+   and downloads both to temporary files next to the script.
+4. Requires the SHA256 of the downloaded script to match its line in `SHA256SUMS` and the file to contain
+   `$ScriptVersion = "<version>"`; otherwise logs an ERROR and changes nothing.
+5. Backs up the current script to `<script>.bak-<timestamp>`, copies its ACL onto the new file and replaces
+   it with an atomic `Move-Item`.
 
-The updated script is used on the next run.
+`git pull` is no longer used. The updated script is used on the next run.
+
+**Releases must therefore include two assets:** `netbird-delayed-update.ps1` and `SHA256SUMS`
+(`sha256sum`-style line: `<hex>  netbird-delayed-update.ps1`). Versions 0.2.x still update themselves
+from the raw file at the release tag, so the `$ScriptVersion = "X.Y.Z"` line must keep its format.
 
 * * *
 
