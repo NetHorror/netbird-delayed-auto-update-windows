@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
 ### Removed
 - `git pull` based self-update.
 
+### Fixed
+- The delay could be bypassed: `choco upgrade` ran without a version and installed the newest release. It now installs exactly the candidate version that has aged (`choco upgrade <pkg> --version <candidate>`).
+- The GUI installer downloaded from `pkgs.netbird.io` ran as SYSTEM without any check. It now needs a valid Authenticode signature from `CN=NetBird GmbH` before it runs, and the file is removed afterwards.
+
 ## [0.2.3] - 2026-08-12
 
 ### Added
