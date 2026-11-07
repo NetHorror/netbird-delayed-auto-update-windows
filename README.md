@@ -9,54 +9,40 @@ Instead of upgrading to the latest Chocolatey version immediately, new versions 
 
 ## Quick start
 
-### Install in one command (recommended)
-
-Run PowerShell **as Administrator**. This downloads the script and `SHA256SUMS` from a release,
-verifies the SHA256 hash, installs NetBird if it is missing (`-InstallClient`) and registers the
-daily Scheduled Task:
+### 1. Install
 
 ~~~powershell
-$VER = "0.3.0"; $dir = "$env:ProgramData\NetBirdDelayedUpdate\bin"; $base = "https://github.com/NetHorror/netbird-delayed-auto-update-windows/releases/download/$VER"
+$VER = "0.3.0"
+$dir = "$env:ProgramData\NetBirdDelayedUpdate\bin"
+$base = "https://github.com/NetHorror/netbird-delayed-auto-update-windows/releases/download/$VER"
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
 New-Item -ItemType Directory -Force $dir | Out-Null
 Invoke-WebRequest "$base/netbird-delayed-update.ps1" -OutFile "$dir\netbird-delayed-update.ps1" -UseBasicParsing
 Invoke-WebRequest "$base/SHA256SUMS" -OutFile "$dir\SHA256SUMS" -UseBasicParsing
-$expected = ((Get-Content "$dir\SHA256SUMS") -match '\snetbird-delayed-update\.ps1$' -split '\s+')[0]
-if ((Get-FileHash "$dir\netbird-delayed-update.ps1" -Algorithm SHA256).Hash -ne $expected) { throw "SHA256 mismatch" }
+$line = Get-Content "$dir\SHA256SUMS" | Where-Object { $_ -match '[\s*]netbird-delayed-update\.ps1$' } | Select-Object -First 1
+$expected = ($line -split '\s+')[0]
+if (-not $expected -or (Get-FileHash "$dir\netbird-delayed-update.ps1" -Algorithm SHA256).Hash -ne $expected) { throw "SHA256 check failed" }
 powershell -ExecutionPolicy Bypass -File "$dir\netbird-delayed-update.ps1" -Install -InstallClient -StartWhenAvailable
 ~~~
 
-> `-UseBasicParsing` is needed on Windows PowerShell 5.1 and ignored by PowerShell 7.
-> Keep the script in a fixed path: the Scheduled Task stores the full script path.
+The install command:
 
-### Alternative: git clone
+1. downloads the script and `SHA256SUMS` from the release and checks the SHA-256 hash (it stops on a mismatch);
+2. installs NetBird if it is missing (`-InstallClient`): with Chocolatey if it is present, otherwise the official installer after an Authenticode check (`CN=NetBird GmbH`);
+3. creates a daily Scheduled Task (04:00) that runs as SYSTEM.
 
-~~~bash
-git clone https://github.com/NetHorror/netbird-delayed-auto-update-windows.git
-cd netbird-delayed-auto-update-windows
-~~~
+Keep the script in `$dir`: the Scheduled Task stores its path.
 
-The script no longer runs `git pull`; a clone is updated by self-update the same way as a single
-downloaded file (see *Script self-update*). Use `-NoSelfUpdate` if you manage the checkout yourself.
+> **The first install takes the current latest NetBird version.** The delay (`-DelayDays`, 10 days by default) applies only to later updates, and only for Chocolatey installs.
 
-### One-off manual run (for testing)
+### 2. Check
 
 ~~~powershell
-powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
-  -DelayDays 0 `
-  -MaxRandomDelaySeconds 0
+Get-ScheduledTask -TaskName "NetBird Delayed Choco Update"
+powershell -ExecutionPolicy Bypass -File "$dir\netbird-delayed-update.ps1" -DelayDays 0 -MaxRandomDelaySeconds 0
 ~~~
 
-### Install the scheduled task (recommended)
-
-~~~powershell
-powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
-  -Install `
-  -DelayDays 10 `
-  -MaxRandomDelaySeconds 3600 `
-  -LogRetentionDays 60 `
-  -StartWhenAvailable
-~~~
+The second command is a one-off run without delay. Logs: see [Logs and state](#logs-and-state).
 
 * * *
 
@@ -104,35 +90,12 @@ powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
 
 ## Installing Chocolatey
 
-Chocolatey is required because the script upgrades NetBird using `choco upgrade`.
-
-### Install via PowerShell (recommended)
-
-Run PowerShell **as Administrator**:
+Chocolatey installs NetBird and upgrades it with `choco upgrade --version`. Run PowerShell **as Administrator**:
 
 ~~~powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force;
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
+Set-ExecutionPolicy Bypass -Scope Process -Force
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
 iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-~~~
-
-Verify:
-
-~~~powershell
-choco -v
-~~~
-
-### Install via CMD
-
-Run **Command Prompt as Administrator**:
-
-~~~cmd
-@"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -InputFormat None -ExecutionPolicy Bypass -Command "[System.Net.ServicePointManager]::SecurityProtocol = 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))" && SET "PATH=%PATH%;%ALLUSERSPROFILE%\chocolatey\bin"
-~~~
-
-Verify:
-
-~~~cmd
 choco -v
 ~~~
 
@@ -231,35 +194,21 @@ The script supports three modes:
 
 * * *
 
-## Installation & usage
+## Uninstall
 
-### Run task as the current user (optional)
-
-If you prefer the task to run as the current user (with highest privileges):
+Remove the Scheduled Task:
 
 ~~~powershell
-powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 `
-  -Install `
-  -DelayDays 10 `
-  -MaxRandomDelaySeconds 3600 `
-  -LogRetentionDays 60 `
-  -StartWhenAvailable `
-  -RunAsCurrentUser
+powershell -ExecutionPolicy Bypass -File "C:\ProgramData\NetBirdDelayedUpdate\bin\netbird-delayed-update.ps1" -Uninstall
 ~~~
 
-### Uninstall the scheduled task
-
-To remove the scheduled task:
+Also delete logs and state (`C:\ProgramData\NetBirdDelayedUpdate`):
 
 ~~~powershell
-powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 -Uninstall
+powershell -ExecutionPolicy Bypass -File "C:\ProgramData\NetBirdDelayedUpdate\bin\netbird-delayed-update.ps1" -Uninstall -RemoveState
 ~~~
 
-To also remove state and logs (`C:\ProgramData\NetBirdDelayedUpdate`):
-
-~~~powershell
-powershell -ExecutionPolicy Bypass -File .\netbird-delayed-update.ps1 -Uninstall -RemoveState
-~~~
+To run the task as the current user instead of SYSTEM, add `-RunAsCurrentUser` to the install command (see [Parameters](#parameters)).
 
 * * *
 
