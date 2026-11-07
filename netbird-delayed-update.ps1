@@ -305,10 +305,15 @@ function Get-ChocoRemoteVersion {
 }
 
 function Upgrade-ChocoPackage {
-    param([string]$Pkg)
+    param(
+        [string]$Pkg,
+        # The matured version to install. Without it choco installs whatever is
+        # newest right now, which can skip the delay entirely.
+        [Parameter(Mandatory=$true)][string]$Version
+    )
     try {
-        Write-Log "Upgrading Chocolatey package '$Pkg'..." "INFO"
-        & choco upgrade $Pkg -y --no-progress
+        Write-Log "Upgrading Chocolatey package '$Pkg' to $Version..." "INFO"
+        & choco upgrade $Pkg --version $Version -y --no-progress
         $code = $LASTEXITCODE
         if ($code -ne 0) {
             Write-Log "Chocolatey upgrade failed with exit code $code." "ERROR"
@@ -408,7 +413,18 @@ function Update-NetBirdGuiIfNeeded {
 
         Invoke-WebRequestCompat -Uri $url -Headers $null -OutFile $tmp | Out-Null
 
+        # Never run an unsigned installer as SYSTEM. The NetBird signer was
+        # checked against the installed netbird.exe (CN=NetBird GmbH, status Valid).
+        $sig = Get-AuthenticodeSignature -FilePath $tmp
+        $signerOk = $sig.SignerCertificate -and ($sig.SignerCertificate.Subject -like "*CN=NetBird GmbH*")
+        if ($sig.Status -ne "Valid" -or -not $signerOk) {
+            Write-Log "GUI installer signature check failed (status: $($sig.Status)); not installing." "ERROR"
+            Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
+            return
+        }
+
         $p = Start-Process -FilePath $tmp -ArgumentList "/S" -Wait -PassThru
+        Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
         if ($p.ExitCode -ne 0) {
             Write-Log "GUI installer returned exit code $($p.ExitCode). GUI state will NOT be updated." "ERROR"
             return
@@ -620,7 +636,7 @@ if ($ageDays -lt $DelayDays) {
 }
 
 # Upgrade
-$ok = Upgrade-ChocoPackage -Pkg $PackageName
+$ok = Upgrade-ChocoPackage -Pkg $PackageName -Version $candidate
 if (-not $ok) {
     Write-Log "Upgrade failed; exiting." "ERROR"
     exit 1
