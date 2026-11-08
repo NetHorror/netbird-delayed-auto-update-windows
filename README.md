@@ -29,7 +29,7 @@ Keep the script in `C:\ProgramData\NetBirdDelayedUpdate\bin`: the Scheduled Task
 
 ~~~powershell
 Get-ScheduledTask -TaskName "NetBird Delayed Choco Update"
-powershell -ExecutionPolicy Bypass -File "$dir\netbird-delayed-update.ps1" -DelayDays 0 -MaxRandomDelaySeconds 0
+powershell -ExecutionPolicy Bypass -File "C:\ProgramData\NetBirdDelayedUpdate\bin\netbird-delayed-update.ps1" -DelayDays 0 -MaxRandomDelaySeconds 0
 ~~~
 
 The second command is a one-off run without delay. Logs: see [Logs and state](#logs-and-state).
