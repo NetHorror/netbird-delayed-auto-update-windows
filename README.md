@@ -12,17 +12,7 @@ Instead of upgrading to the latest Chocolatey version immediately, new versions 
 ### 1. Install
 
 ~~~powershell
-$VER = "0.3.0"
-$dir = "$env:ProgramData\NetBirdDelayedUpdate\bin"
-$base = "https://github.com/NetHorror/netbird-delayed-auto-update-windows/releases/download/$VER"
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
-New-Item -ItemType Directory -Force $dir | Out-Null
-Invoke-WebRequest "$base/netbird-delayed-update.ps1" -OutFile "$dir\netbird-delayed-update.ps1" -UseBasicParsing
-Invoke-WebRequest "$base/SHA256SUMS" -OutFile "$dir\SHA256SUMS" -UseBasicParsing
-$line = Get-Content "$dir\SHA256SUMS" | Where-Object { $_ -match '[\s*]netbird-delayed-update\.ps1$' } | Select-Object -First 1
-$expected = ($line -split '\s+')[0]
-if (-not $expected -or (Get-FileHash "$dir\netbird-delayed-update.ps1" -Algorithm SHA256).Hash -ne $expected) { throw "SHA256 check failed" }
-powershell -ExecutionPolicy Bypass -File "$dir\netbird-delayed-update.ps1" -Install -InstallClient -StartWhenAvailable
+irm https://github.com/NetHorror/netbird-delayed-auto-update-windows/releases/download/0.3.0/install.ps1 | iex
 ~~~
 
 The install command:
@@ -31,7 +21,7 @@ The install command:
 2. installs NetBird if it is missing (`-InstallClient`): with Chocolatey if it is present, otherwise the official installer after an Authenticode check (`CN=NetBird GmbH`);
 3. creates a daily Scheduled Task (04:00) that runs as SYSTEM.
 
-Keep the script in `$dir`: the Scheduled Task stores its path.
+Keep the script in `C:ProgramDataNetBirdDelayedUpdatebin`: the Scheduled Task stores its path.
 
 > **The first install takes the current latest NetBird version.** The delay (`-DelayDays`, 10 days by default) applies only to later updates, and only for Chocolatey installs.
 
