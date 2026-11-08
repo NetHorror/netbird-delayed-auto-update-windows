@@ -1,5 +1,5 @@
 # One-line installer for netbird-delayed-update (Windows).
-#   irm https://github.com/NetHorror/netbird-delayed-auto-update-windows/releases/download/0.3.0/install.ps1 | iex
+#   irm https://github.com/NetHorror/netbird-delayed-auto-update-windows/releases/download/0.3.0/install-windows.ps1 | iex
 # Run from an elevated PowerShell. Downloads the script and SHA256SUMS of release 0.3.0,
 # verifies the SHA-256 hash, copies the script to a protected folder (the Scheduled Task
 # stores its path there), then installs the task and NetBird if it is missing.
