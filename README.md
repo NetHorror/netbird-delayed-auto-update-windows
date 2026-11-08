@@ -12,7 +12,7 @@ Instead of upgrading to the latest Chocolatey version immediately, new versions 
 ### 1. Install
 
 ~~~powershell
-irm https://github.com/NetHorror/netbird-delayed-auto-update-windows/releases/download/0.3.0/install.ps1 | iex
+irm https://github.com/NetHorror/netbird-delayed-auto-update-windows/releases/download/0.3.0/install-windows.ps1 | iex
 ~~~
 
 The install command:
@@ -85,7 +85,7 @@ Chocolatey installs NetBird and upgrades it with `choco upgrade --version`. Run 
 ~~~powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install-windows.ps1'))
 choco -v
 ~~~
 
