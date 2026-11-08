@@ -21,7 +21,7 @@ The install command:
 2. installs NetBird if it is missing (`-InstallClient`): with Chocolatey if it is present, otherwise the official installer after an Authenticode check (`CN=NetBird GmbH`);
 3. creates a daily Scheduled Task (04:00) that runs as SYSTEM.
 
-Keep the script in `C:ProgramDataNetBirdDelayedUpdatebin`: the Scheduled Task stores its path.
+Keep the script in `C:\ProgramData\NetBirdDelayedUpdate\bin`: the Scheduled Task stores its path.
 
 > **The first install takes the current latest NetBird version.** The delay (`-DelayDays`, 10 days by default) applies only to later updates, and only for Chocolatey installs.
 
